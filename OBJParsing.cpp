@@ -62,6 +62,11 @@ void STDOBJ::Render()
 
 bool GetWord(std::string& word, std::string& line, char splitChar)
 {
+	if (line == "")
+	{
+		return false;
+	}
+
 	int pos = line.find(splitChar);
 
 	if (pos != std::string::npos)
@@ -72,7 +77,10 @@ bool GetWord(std::string& word, std::string& line, char splitChar)
 
 		return true;
 	}
-	return false;
+
+	word = line;
+	line.clear();
+	return true;
 }
 
 bool STDOBJ::LoadOBJ(std::string OBJFilepath)
