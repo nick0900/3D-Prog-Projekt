@@ -9,8 +9,8 @@ namespace Pipeline
 	void Release();
 
 	ID3D11Device* Device();
-	bool GetBackbufferRTV(ID3D11RenderTargetView* backBufferRTV);
-	bool GetBackbufferUAV(ID3D11UnorderedAccessView* backBufferUAV);
+	bool GetBackbufferRTV(ID3D11RenderTargetView*& backBufferRTV);
+	bool GetBackbufferUAV(ID3D11UnorderedAccessView*& backBufferUAV);
 	UINT BackBufferWidth();
 	UINT BackBufferHeight();
 	void DrawIndexed(UINT size, UINT start);

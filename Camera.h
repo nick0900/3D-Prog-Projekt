@@ -56,8 +56,8 @@ class Camera : public Object
 		UINT ViewportHeight();
 
 	protected : 
-		virtual DirectX::XMMATRIX TransformMatrix() override;
-		virtual DirectX::XMMATRIX InverseTransformMatrix() override;
+		virtual DirectX::XMFLOAT4X4 TransformMatrix() override;
+		virtual DirectX::XMFLOAT4X4 InverseTransformMatrix() override;
 
 	private :
 		bool SetupCamera();

@@ -35,7 +35,7 @@ bool CreateInterfaces(UINT width, UINT height, HWND window, ID3D11Device*& devic
 	swapChainDesc.SampleDesc.Count = 1;
 	swapChainDesc.SampleDesc.Quality = 0;
 
-	swapChainDesc.BufferUsage = DXGI_USAGE_RENDER_TARGET_OUTPUT;
+	swapChainDesc.BufferUsage = DXGI_USAGE_RENDER_TARGET_OUTPUT | DXGI_USAGE_UNORDERED_ACCESS;
 	swapChainDesc.BufferCount = 1;
 	swapChainDesc.OutputWindow = window;
 	swapChainDesc.Windowed = true;
@@ -103,7 +103,7 @@ ID3D11Device* Pipeline::Device()
 	return Base::device;
 }
 
-bool Pipeline::GetBackbufferRTV(ID3D11RenderTargetView* backBufferRTV)
+bool Pipeline::GetBackbufferRTV(ID3D11RenderTargetView*& backBufferRTV)
 {
 	ID3D11Texture2D* backBuffer = nullptr;
 	if (FAILED(Base::swapChain->GetBuffer(0, __uuidof(ID3D11Texture2D), reinterpret_cast<void**>(&backBuffer))))
@@ -119,7 +119,7 @@ bool Pipeline::GetBackbufferRTV(ID3D11RenderTargetView* backBufferRTV)
 	return !FAILED(hr);
 }
 
-bool Pipeline::GetBackbufferUAV(ID3D11UnorderedAccessView* backBufferUAV)
+bool Pipeline::GetBackbufferUAV(ID3D11UnorderedAccessView*& backBufferUAV)
 {
 	ID3D11Texture2D* backBuffer = nullptr;
 	if (FAILED(Base::swapChain->GetBuffer(0, __uuidof(ID3D11Texture2D), reinterpret_cast<void**>(&backBuffer))))
@@ -239,7 +239,8 @@ void Pipeline::Deferred::GeometryPass::PixelShader::Bind::GBuffers(ID3D11RenderT
 
 void Pipeline::Deferred::GeometryPass::PixelShader::Clear::SRVs()
 {
-	Base::immediateContext->PSSetShaderResources(0, 3, nullptr);
+	ID3D11ShaderResourceView* clear[3] = {nullptr, nullptr, nullptr};
+	Base::immediateContext->PSSetShaderResources(0, 3, clear);
 }
 
 void Pipeline::Map::Buffer(ID3D11Buffer* buffer, D3D11_MAPPED_SUBRESOURCE* mappedResource)

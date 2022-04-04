@@ -34,15 +34,19 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInstance
 
 	Renderer renderer = Renderer(&sceneObjects, &renderCameras);
 
-	STDOBJ hugin = STDOBJ("OBJ/Hugin.obj");
+	//STDOBJ hugin = STDOBJ("OBJ/Hugin.obj");
 
-	sceneObjects.push_back(&hugin);
+	//sceneObjects.push_back(&hugin);
+
+	STDOBJ cubes = STDOBJ("OBJ/simpleCube.obj");
+
+	sceneObjects.push_back(&cubes);
 
 	Camera mainCamera = Camera(WIDTH, HEIGHT, 0, 0, 2.5f, 0.1f, 20.0f);
 
 	renderCameras.push_back(&mainCamera);
 
-	mainCamera.Translate({ 0.0f, 0.0f, 5.0f }, OBJECT_TRANSFORM_SPACE_GLOBAL, OBJECT_TRANSFORM_REPLACE);
+	mainCamera.Translate({ 0.0f, 0.0f, -2.0f }, OBJECT_TRANSFORM_SPACE_GLOBAL, OBJECT_TRANSFORM_REPLACE);
 
 	std::chrono::steady_clock timer;
 	std::chrono::time_point<std::chrono::steady_clock> previous = timer.now();

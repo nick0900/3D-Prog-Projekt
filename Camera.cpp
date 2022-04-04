@@ -77,18 +77,34 @@ UINT Camera::ViewportHeight()
 	return height;
 }
 
-DirectX::XMMATRIX Camera::TransformMatrix()
+DirectX::XMFLOAT4X4 Camera::TransformMatrix()
 {
+	DirectX::XMMATRIX scaling = DirectX::XMMatrixScaling(1.0f, 1.0f, 1.0f);
+
 	DirectX::XMMATRIX rotation = DirectX::XMLoadFloat4x4(&rotationMatrix);
 
-	return rotation * DirectX::XMMatrixTranslation(position.x, position.y, position.z);
+	DirectX::XMMATRIX translation = DirectX::XMMatrixTranslation(position.x, position.y, position.z);
+
+	DirectX::XMFLOAT4X4 output;
+
+	DirectX::XMStoreFloat4x4(&output, DirectX::XMMatrixTranspose(scaling * rotation * translation));
+
+	return output;
 }
 
-DirectX::XMMATRIX Camera::InverseTransformMatrix()
+DirectX::XMFLOAT4X4 Camera::InverseTransformMatrix()
 {
-	DirectX::XMMATRIX rotation = DirectX::XMLoadFloat4x4(&rotationMatrix);
+	DirectX::XMMATRIX invScaling = DirectX::XMMatrixScaling(1.0f, 1.0f, 1.0f);
 
-	return DirectX::XMMatrixTranspose(rotation) * DirectX::XMMatrixTranslation(-position.x, -position.y, -position.z);
+	DirectX::XMMATRIX invRotation = DirectX::XMMatrixTranspose(DirectX::XMLoadFloat4x4(&rotationMatrix));
+
+	DirectX::XMMATRIX invTranslation = DirectX::XMMatrixTranslation(-position.x, -position.y, -position.z);
+
+	DirectX::XMFLOAT4X4 output;
+
+	DirectX::XMStoreFloat4x4(&output, DirectX::XMMatrixTranspose(invScaling * invRotation * invTranslation));
+
+	return output;
 }
 
 bool Camera::SetupCamera()

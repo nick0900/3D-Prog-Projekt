@@ -100,17 +100,17 @@ void Object::Translate(const std::array<float, 3>& translation, bool transformSp
 
 bool Object::CreateTransformBuffer()
 {
+	scale.x = 1.0f;
+	scale.y = 1.0f;
+	scale.z = 1.0f;
+	DirectX::XMStoreFloat4x4(&rotationMatrix, DirectX::XMMatrixRotationRollPitchYaw(0.0f, 0.0f, 0.0f));
+
 	transformed = false;
 
 	DirectX::XMFLOAT4X4 matrices[2];
 	
-	DirectX::XMMATRIX transpose = DirectX::XMMatrixTranspose(TransformMatrix());
-
-	DirectX::XMStoreFloat4x4(&matrices[0], transpose);
-
-	transpose = DirectX::XMMatrixTranspose(InverseTransformMatrix());
-
-	DirectX::XMStoreFloat4x4(&matrices[1], transpose);
+	matrices[0] = TransformMatrix();
+	matrices[1] = InverseTransformMatrix();
 
 	D3D11_BUFFER_DESC bufferDesc;
 
@@ -136,13 +136,8 @@ void Object::UpdateTransformBuffer()
 	{
 		DirectX::XMFLOAT4X4 matrices[2];
 
-		DirectX::XMMATRIX transpose = DirectX::XMMatrixTranspose(TransformMatrix());
-
-		DirectX::XMStoreFloat4x4(&matrices[0], transpose);
-
-		transpose = DirectX::XMMatrixTranspose(InverseTransformMatrix());
-
-		DirectX::XMStoreFloat4x4(&matrices[1], transpose);
+		matrices[0] = TransformMatrix();
+		matrices[1] = InverseTransformMatrix();
 
 		D3D11_MAPPED_SUBRESOURCE mappedResource;
 		ZeroMemory(&mappedResource, sizeof(D3D11_MAPPED_SUBRESOURCE));
@@ -155,16 +150,32 @@ void Object::UpdateTransformBuffer()
 	}
 }
 
-DirectX::XMMATRIX Object::TransformMatrix()
+DirectX::XMFLOAT4X4 Object::TransformMatrix()
 {
+	DirectX::XMMATRIX scaling = DirectX::XMMatrixScaling(scale.x, scale.y, scale.z);
+
 	DirectX::XMMATRIX rotation = DirectX::XMLoadFloat4x4(&rotationMatrix);
 
-	return DirectX::XMMatrixScaling(scale.x, scale.y, scale.z) * rotation * DirectX::XMMatrixTranslation(position.x, position.y, position.z);
+	DirectX::XMMATRIX translation = DirectX::XMMatrixTranslation(position.x, position.y, position.z);
+
+	DirectX::XMFLOAT4X4 output;
+
+	DirectX::XMStoreFloat4x4(&output, DirectX::XMMatrixTranspose(scaling * rotation * translation));
+	
+	return output;
 }
 
-DirectX::XMMATRIX Object::InverseTransformMatrix()
+DirectX::XMFLOAT4X4 Object::InverseTransformMatrix()
 {
-	DirectX::XMMATRIX rotation = DirectX::XMLoadFloat4x4(&rotationMatrix);
+	DirectX::XMMATRIX invScaling = DirectX::XMMatrixScaling((scale.x != 0) ? 1.0f / scale.x : 0.0f, (scale.y != 0) ? 1.0f / scale.y : 0.0f, (scale.z != 0) ? 1.0f / scale.z : 0.0f);
 
-	return DirectX::XMMatrixScaling((scale.x != 0) ? 1.0f / scale.x : 0.0f, (scale.y != 0) ? 1.0f / scale.y : 0.0f, (scale.z != 0) ? 1.0f / scale.z : 0.0f) * DirectX::XMMatrixTranspose(rotation) * DirectX::XMMatrixTranslation(-position.x, -position.y, -position.z);
+	DirectX::XMMATRIX invRotation = DirectX::XMMatrixTranspose(DirectX::XMLoadFloat4x4(&rotationMatrix));
+
+	DirectX::XMMATRIX invTranslation = DirectX::XMMatrixTranslation(-position.x, -position.y, -position.z);
+
+	DirectX::XMFLOAT4X4 output;
+
+	DirectX::XMStoreFloat4x4(&output, DirectX::XMMatrixTranspose(invScaling * invRotation * invTranslation));
+
+	return output;
 }

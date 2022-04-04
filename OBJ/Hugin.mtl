@@ -1,0 +1,17 @@
+# File produced by Open Asset Import Library (http://www.assimp.sf.net)
+# (assimp v3.1.202510665)
+
+newmtl head test
+kd 0.8 0.8 0.8
+illum 1
+map_Kd textures/hugin_head_color.png
+map_Ka textures/hugin_head_AO.png
+map_Ks textures/hugin_head_specular.png
+
+newmtl UV test
+Ns 50.0
+kd 0.8 0.8 0.8
+illum 1
+map_Kd textures/Hugin_Color.png
+map_Ka textures/Hugin_AO.png
+map_Ks textures/Hugin_Specular.png

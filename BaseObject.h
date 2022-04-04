@@ -27,8 +27,8 @@ class Object
 		bool CreateTransformBuffer();
 		void UpdateTransformBuffer();
 		
-		virtual DirectX::XMMATRIX TransformMatrix();
-		virtual DirectX::XMMATRIX InverseTransformMatrix();
+		virtual DirectX::XMFLOAT4X4 TransformMatrix();
+		virtual DirectX::XMFLOAT4X4 InverseTransformMatrix();
 		
 		ID3D11Buffer* worldTransformBuffer;
 

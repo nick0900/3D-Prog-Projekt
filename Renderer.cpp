@@ -215,11 +215,11 @@ bool Renderer::CreateBackBufferViews()
 	textureDesc.Height = Pipeline::BackBufferHeight();
 	textureDesc.MipLevels = 1;
 	textureDesc.ArraySize = 1;
-	textureDesc.Format = DXGI_FORMAT_D24_UNORM_S8_UINT;
+	textureDesc.Format = DXGI_FORMAT_R24G8_TYPELESS;
 	textureDesc.SampleDesc.Count = 1;
 	textureDesc.SampleDesc.Quality = 0;
 	textureDesc.Usage = D3D11_USAGE_DEFAULT;
-	textureDesc.BindFlags = D3D11_BIND_DEPTH_STENCIL;
+	textureDesc.BindFlags = D3D11_BIND_DEPTH_STENCIL | D3D11_BIND_SHADER_RESOURCE;
 	textureDesc.CPUAccessFlags = 0;
 	textureDesc.MiscFlags = 0;
 
@@ -229,13 +229,29 @@ bool Renderer::CreateBackBufferViews()
 		return false;
 	}
 
-	if (FAILED(Pipeline::Device()->CreateDepthStencilView(dsTexture, nullptr, &dsView)))
+	D3D11_DEPTH_STENCIL_VIEW_DESC dsvDesc;
+	dsvDesc.Format = DXGI_FORMAT_D24_UNORM_S8_UINT;
+	dsvDesc.ViewDimension = D3D11_DSV_DIMENSION_TEXTURE2D;
+	dsvDesc.Flags = 0;
+	D3D11_TEX2D_DSV texDSV;
+	texDSV.MipSlice = 0;
+	dsvDesc.Texture2D = texDSV;
+
+	if (FAILED(Pipeline::Device()->CreateDepthStencilView(dsTexture, &dsvDesc, &dsView)))
 	{
 		std::cerr << "Failed to create depth stencil view!" << std::endl;
 		return false;
 	}
 
-	if (FAILED(Pipeline::Device()->CreateShaderResourceView(dsTexture, nullptr, &depthSRV)))
+	D3D11_SHADER_RESOURCE_VIEW_DESC srvDesc;
+	srvDesc.Format = DXGI_FORMAT_R24_UNORM_X8_TYPELESS;
+	srvDesc.ViewDimension = D3D11_SRV_DIMENSION_TEXTURE2D;
+	D3D11_TEX2D_SRV texSRV;
+	texSRV.MipLevels = 1;
+	texSRV.MostDetailedMip = 0;
+	srvDesc.Texture2D = texSRV;
+
+	if (FAILED(Pipeline::Device()->CreateShaderResourceView(dsTexture, &srvDesc, &depthSRV)))
 	{
 		std::cerr << "Failed to create depth SRV!" << std::endl;
 		return false;
