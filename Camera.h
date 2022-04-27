@@ -20,16 +20,15 @@ struct ProjBuffer
 	float heightScalar;
 
 	float projectionConstantA;
-	float projectionVonstantB;
-	
+	float projectionConstantB;
 
 	ProjBuffer(float FovAngleY, float AspectRatio, UINT width, UINT height, float NearZ, float FarZ) : 
 
-	widthScalar(tan(FovAngleY / 2.0f) / (float)width), 
-	heightScalar((float)width / (AspectRatio * (float)height)), 
+	widthScalar(tan(FovAngleY / 2.0f)),
+	heightScalar(widthScalar * AspectRatio), 
 
 	projectionConstantA(FarZ / (FarZ - NearZ)), 
-	projectionVonstantB((-NearZ * FarZ) / (FarZ - NearZ)),
+	projectionConstantB((-NearZ * FarZ) / (FarZ - NearZ)),
 
 	projectionMatrix(DirectX::XMFLOAT4X4())
 	{
@@ -37,6 +36,22 @@ struct ProjBuffer
 
 		DirectX::XMStoreFloat4x4(&projectionMatrix, transpose);
 	}
+};
+
+struct ViewBuffer
+{
+	float width;
+	float height;
+	UINT topLeftX;
+	UINT topLeftY;
+
+	ViewBuffer(UINT width, UINT height, UINT topLeftX, UINT topLeftY) :
+	width(width),
+	height(height),
+
+	topLeftX(topLeftX),
+	topLeftY(topLeftY)
+	{}
 };
 
 class Camera : public Object
@@ -54,6 +69,8 @@ class Camera : public Object
 
 		UINT ViewportWidth();
 		UINT ViewportHeight();
+		UINT ViewportTopLeftX();
+		UINT ViewportTopLeftY();
 
 	protected : 
 		virtual DirectX::XMFLOAT4X4 TransformMatrix() override;
@@ -81,5 +98,6 @@ class Camera : public Object
 		bool projModified;
 
 		ID3D11Buffer* projectionBuffer;
-		
+
+		ID3D11Buffer* viewBuffer;
 };

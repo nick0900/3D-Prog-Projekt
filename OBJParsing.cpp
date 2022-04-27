@@ -202,7 +202,7 @@ bool STDOBJ::LoadOBJ(std::string OBJFilepath)
 					index[1] = std::stoi(letter) - 1;
 					index[2] = std::stoi(word) - 1;
 
-					Vertex temp = { {pos[index[0]][0], pos[index[0]][1], pos[index[0]][2]}, {norm[index[2]][0], norm[index[2]][1], norm[index[2]][2]}, {uv[index[1]][0], uv[index[1]][1]} };
+					Vertex temp = { {pos[index[0]][0], pos[index[0]][1], pos[index[0]][2]}, {norm[index[2]][0], norm[index[2]][1], norm[index[2]][2]}, {uv[index[1]][0], -uv[index[1]][1]} };
 
 					vertecies.push_back(temp);
 				}

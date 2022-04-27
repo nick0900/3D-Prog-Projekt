@@ -12,7 +12,16 @@ cbuffer CameraProjection : register(b1)
     float heightScalar;
 
     float projectionConstantA;
-    float projectionVonstantB;
+    float projectionConstantB;
+};
+
+cbuffer CameraViewport : register(b2)
+{
+    float width;
+    float height;
+    
+    uint topLeftX;
+    uint topLeftY;
 };
 
 //Implement viewport start position
@@ -34,10 +43,13 @@ RWTexture2D<float4> backBuffer : register(u0);
 
 void main( uint3 pixelCoords : SV_DispatchThreadID )
 {
-    float zDepth = projectionVonstantB * (machineDepth.Load(pixelCoords) - projectionConstantA);
-    float widthUnit = zDepth * widthScalar;
-    float heightUnit = widthUnit * heightScalar;
-    float3 pixelPosition = float3(pixelCoords.x * widthUnit, pixelCoords.y * heightUnit, zDepth);
+    float zDepth = projectionConstantB / (machineDepth.Load(pixelCoords) - projectionConstantA);
+    float xcoord = pixelCoords.x;
+    float ycoord = pixelCoords.y;
+    float xPosition = (xcoord / width - 1.0f / 2.0f) * 2 * widthScalar * zDepth;
+    float yPosition = (1.0f / 2.0f - ycoord / height) * 2 * heightScalar * zDepth;
     
-    backBuffer[pixelCoords.xy] = float4(pixelPosition, 1.0f);
+    float3 pixelPosition = float3(xPosition, yPosition, zDepth);
+    
+    backBuffer[uint2(topLeftX + pixelCoords.x, topLeftY + pixelCoords.y)] = float4(pixelPosition, 1.0f);
 }

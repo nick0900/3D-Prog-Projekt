@@ -65,6 +65,8 @@ void Camera::SetActiveCamera()
 	UpdateProjection();
 	Pipeline::Deferred::GeometryPass::VertexShader::Bind::cameraProjectionBuffer(projectionBuffer);
 	Pipeline::Deferred::LightPass::ComputeShader::Bind::CameraProjectionBuffer(projectionBuffer);
+
+	Pipeline::Deferred::LightPass::ComputeShader::Bind::CameraViewportBuffer(viewBuffer);
 }
 
 UINT Camera::ViewportWidth()
@@ -75,6 +77,16 @@ UINT Camera::ViewportWidth()
 UINT Camera::ViewportHeight()
 {
 	return height;
+}
+
+UINT Camera::ViewportTopLeftX()
+{
+	return topLeftX;
+}
+
+UINT Camera::ViewportTopLeftY()
+{
+	return topLeftY;
 }
 
 DirectX::XMFLOAT4X4 Camera::TransformMatrix()
@@ -140,16 +152,32 @@ bool Camera::CreateBuffers()
 	bufferDesc.StructureByteStride = 0;
 
 	projModified = false;
-	ProjBuffer bufferStruct = ProjBuffer(FovAngleY, AspectRatio, width, height, NearZ, FarZ);
+	ProjBuffer projStruct = ProjBuffer(FovAngleY, AspectRatio, width, height, NearZ, FarZ);
 
 	D3D11_SUBRESOURCE_DATA data;
-	data.pSysMem = &bufferStruct;
+	data.pSysMem = &projStruct;
 	data.SysMemPitch = 0;
 	data.SysMemSlicePitch = 0;
 
-	HRESULT hr = Pipeline::Device()->CreateBuffer(&bufferDesc, &data, &projectionBuffer);
+	if (FAILED(Pipeline::Device()->CreateBuffer(&bufferDesc, &data, &projectionBuffer)))
+	{
+		return false;
+	}
 
-	return !FAILED(hr);
+	bufferDesc.ByteWidth = sizeof(ViewBuffer);
+	bufferDesc.Usage = D3D11_USAGE_IMMUTABLE;
+	bufferDesc.CPUAccessFlags = 0;
+
+	ViewBuffer viewStruct = ViewBuffer(width, height, topLeftX, topLeftY);
+
+	data.pSysMem = &viewStruct;
+
+	if (FAILED(Pipeline::Device()->CreateBuffer(&bufferDesc, &data, &viewBuffer)))
+	{
+		return false;
+	}
+
+	return true;
 }
 
 void Camera::UpdateProjection()

@@ -178,6 +178,8 @@ void Renderer::CameraDeferredRender(Camera* renderView)
 		object->Render();
 	}
 
+	Pipeline::Deferred::GeometryPass::PixelShader::Clear::GBuffers();
+
 	SharedResources::BindComputeShader(SharedResources::cShader::standard);
 
 	Pipeline::Deferred::LightPass::ComputeShader::Bind::DepthBuffer(depthSRV);
@@ -188,7 +190,9 @@ void Renderer::CameraDeferredRender(Camera* renderView)
 
 	Pipeline::Deferred::LightPass::ComputeShader::Bind::BackBufferUAV(backBufferUAV);
 
-	Pipeline::Deferred::LightPass::ComputeShader::Dispatch16by9(renderView->ViewportWidth(), renderView->ViewportHeight());
+	Pipeline::Deferred::LightPass::ComputeShader::Dispatch32X18(renderView->ViewportWidth(), renderView->ViewportHeight(), renderView->ViewportTopLeftX(), renderView->ViewportTopLeftY());
+
+	Pipeline::Deferred::LightPass::ComputeShader::Clear::ComputeSRVs();
 }
 
 void Renderer::ReflectionUpdate()

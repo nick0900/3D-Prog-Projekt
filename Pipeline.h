@@ -65,6 +65,7 @@ namespace Pipeline
 				namespace Clear
 				{
 					void SRVs();
+					void GBuffers();
 				}
 			}
 		}
@@ -79,6 +80,8 @@ namespace Pipeline
 
 					void CameraViewBuffer(ID3D11Buffer* cameraViewBuffer);
 					void CameraProjectionBuffer(ID3D11Buffer* cameraProjectionBuffer);
+					void CameraViewportBuffer(ID3D11Buffer* cameraViewportBuffer);
+					void LightParameterStructuredBuffer(ID3D11Buffer* paramsBuffer);
 
 					void Pointlights(ID3D11Buffer* pointlights, UINT numLights);
 					void Spotlights(ID3D11Buffer* spotlights, UINT numLights);
@@ -91,19 +94,23 @@ namespace Pipeline
 
 					void BackBufferUAV(ID3D11UnorderedAccessView* UAV);
 				}
+
+				namespace Clear
+				{
+					void ComputeSRVs();
+				}
 				
-				bool Dispatch16by9(UINT width, UINT height);
+				bool Dispatch32X18(UINT width, UINT height, UINT topLeftX, UINT topLeftY);
 			}
 		}
 	}
 
-	namespace Map
+	namespace ResourceManipulation
 	{
-		void Buffer(ID3D11Buffer* buffer, D3D11_MAPPED_SUBRESOURCE* mappedResource);
-	}
+		void MapBuffer(ID3D11Buffer* buffer, D3D11_MAPPED_SUBRESOURCE* mappedResource);
+		void UnmapBuffer(ID3D11Buffer* buffer);
 
-	namespace Unmap
-	{
-		void Buffer(ID3D11Buffer* buffer);
+		void StructuredBufferCpy(ID3D11Buffer* dst, UINT dstPosition, ID3D11Buffer* src, UINT srcStart, UINT srcEnd);
+		void TextureArrayCpy(ID3D11Texture2D* dst, UINT dstPosition, ID3D11Texture2D* src, UINT srcStart, UINT srcEnd);
 	}
 }

@@ -45,11 +45,11 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInstance
 
 	sceneObjects.push_back(&cubes);
 
-	Camera mainCamera = Camera(WIDTH, HEIGHT, 0, 0, 2.5f, 0.1f, 20.0f);
+	Camera mainCamera = Camera(WIDTH, HEIGHT, 0, 0, 1.5f, 0.1f, 20.0f);
 
 	renderCameras.push_back(&mainCamera);
 
-	mainCamera.Translate({ 0.0f, 3.0f, -2.0f }, OBJECT_TRANSFORM_SPACE_GLOBAL, OBJECT_TRANSFORM_REPLACE);
+	mainCamera.Translate({ 0.0f, 3.0f, -5.0f }, OBJECT_TRANSFORM_SPACE_GLOBAL, OBJECT_TRANSFORM_REPLACE);
 
 	std::chrono::steady_clock timer;
 	std::chrono::time_point<std::chrono::steady_clock> previous = timer.now();
