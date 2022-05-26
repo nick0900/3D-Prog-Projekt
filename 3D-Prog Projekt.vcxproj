@@ -144,6 +144,7 @@
   <ItemGroup>
     <ClCompile Include="BaseObject.cpp" />
     <ClCompile Include="Camera.cpp" />
+    <ClCompile Include="Lights.cpp" />
     <ClCompile Include="main.cpp" />
     <ClCompile Include="OBJParsing.cpp" />
     <ClCompile Include="Pipeline.cpp" />
@@ -155,6 +156,7 @@
   <ItemGroup>
     <ClInclude Include="BaseObject.h" />
     <ClInclude Include="Camera.h" />
+    <ClInclude Include="Lights.h" />
     <ClInclude Include="OBJParsing.h" />
     <ClInclude Include="Pipeline.h" />
     <ClInclude Include="Renderer.h" />
