@@ -142,9 +142,9 @@ void Object::UpdateTransformBuffer()
 		D3D11_MAPPED_SUBRESOURCE mappedResource;
 		ZeroMemory(&mappedResource, sizeof(D3D11_MAPPED_SUBRESOURCE));
 
-		Pipeline::Map::Buffer(worldTransformBuffer, &mappedResource);
+		Pipeline::ResourceManipulation::MapBuffer(worldTransformBuffer, &mappedResource);
 		memcpy(mappedResource.pData, matrices, sizeof(DirectX::XMFLOAT4X4) * 2);
-		Pipeline::Unmap::Buffer(worldTransformBuffer);
+		Pipeline::ResourceManipulation::UnmapBuffer(worldTransformBuffer);
 
 		transformed = false;
 	}
@@ -179,3 +179,5 @@ DirectX::XMFLOAT4X4 Object::InverseTransformMatrix()
 
 	return output;
 }
+
+void Object::OnModyfied() {}

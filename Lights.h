@@ -6,6 +6,12 @@
 
 #include "BaseObject.h"
 
+//Revise whole shadowmap management. Make single shadowmap class with different states for mapping modes and supporting general resolutions. Use vector of texture arrays pointers to order and bind shadowmaps. light parameters will tell what srv position and what array index it has, aswell what mapping mode to use.
+//renderer will have own camera for depth mapping and will query settings from each light with a shadowmap.
+
+#define SMALLEST_PARAM_CAPACITY 8
+#define SMALLES_SHADOW_CAPACITY 4
+
 enum LightType
 {
 	MissingLight = -1,
@@ -15,45 +21,54 @@ enum LightType
 	NumberOfLightTypes = 3 // the number of lights excluding missing light
 };
 
+enum ShadowMapType
+{
+	Single320X320 = 0
+};
+
+enum PointLightShadowMapType
+{
+	Single340X340 = 0
+};
+
+struct GeneralLightInfoBuffer
+{
+	int lightCount;
+	int padding[3];
+
+};
+
 struct LightBufferStruct
 {
 	int lightType;
-	int useShadowMap; //Cast shadows if = 1
-	int shadowMapIndex; //index of subresource thhat contains correct map
-	int shadowMapSpecialType; //if a light can have different shadow map structures this informs the shader what to do
-	float angleLimit; //specific to spotlight for frustrum
+	int shadowMapIndex; //index of subresource that contains correct map. If -1 then don't cast shadows
+	int shadowMapTypeIndex; //Tells shader where texturearray is located
+	int mappingMode; //tells shader what kind of sampling to perform
+	float falloff;	//Falloff for point/spot -lights
+	float lightFOV; //specific to spotlight for frustrum. Also used for light camera fov to render shadow maps
 	float diffuse[3];
-	float padding;
 	float specular[3];
+	float position[3];
+	float direction[3];
+	DirectX::XMFLOAT4X4 invTransform; //Needed for shadow mapping
 
-
-	LightBufferStruct(LightType type, float anglelimit, const std::array<float, 3>& diffuse, const std::array<float, 3>& specular) : 
-		lightType(type), 
-		angleLimit(angleLimit),
-		useShadowMap(0),
-		shadowMapIndex(0),
-		shadowMapSpecialType(0),
-		padding(0.0f)
-	{
-		for (int i = 0; i < 3; i++)
-		{
-			this->diffuse[i] = diffuse[i];
-			this->specular[i] = specular[i];
-		}
-	}
+	float padding[2];
 
 	LightBufferStruct() :
 		lightType(LightType::MissingLight),
-		angleLimit(0.0f),
-		useShadowMap(0),
+		lightFOV(0.0f),
+		falloff(0.0f),
 		shadowMapIndex(0),
-		shadowMapSpecialType(0),
-		padding(0.0f)
+		shadowMapTypeIndex(0),
+		invTransform()
 	{
 		for (int i = 0; i < 3; i++)
 		{
 			this->diffuse[i] = 0.0f;
 			this->specular[i] = 0.0f;
+			this->position[i] = 0.0f;
+			this->direction[i] = 0.0f;
+			this->padding[i] = 0.0f;
 		}
 	}
 };
@@ -68,8 +83,18 @@ public:
 	void ReleaseBase();
 	void BindBase();
 
-	virtual void Bind() = 0;
-	virtual void Unbind() = 0;
+	bool ShadowMapCreate(int mapType);
+	void ShadowMapDestroy();
+	bool HasShadowMap();
+	void SetCastShadows(bool castShadows);
+	bool CastShadowsStatus();
+	void RenderShadowMap();
+
+	void SetLightDiffuse(const std::array<float, 3>& diffuse);
+	void SetLightSpecular(const std::array<float, 3>& specular);
+
+	void Bind();
+	void Unbind();
 
 	void ParamMove(int newPosition);
 
@@ -78,12 +103,22 @@ protected:
 	void BindParams();
 	void UnbindParams();
 
+	void LightFOV(float angle);
+	void Falloff(float falloff);
+
+	virtual ShadowHandlerBase* SpecificShadowOptions(int mapType) = 0;
+
+	virtual void OnModyfied() override;
+	virtual void LightDirection(DirectX::XMFLOAT3& direction) = 0;
+
 private:
+	bool transformed;
 	bool paramsModified;
 	LightBufferStruct parameters;
 	bool UpdateParams();
-
 	ID3D11Buffer* paramsBuffer;
+
+	ShadowHandlerBase* shadowMap = nullptr;
 
 	int arrayPosition;
 	int FreePosition();
@@ -117,14 +152,16 @@ public:
 
 	void ShadowMove(int newPosition);
 
+	bool SetupComplete();
+
 protected:
 	void UpdateShadowMap();
 
-	ID3D11RenderTargetView* ShadowMapRTV;
+	bool shadowMapUpdated;
+	ID3D11Texture2D* shadowMap;
 
 	virtual void ShadowMapDesc(D3D11_TEXTURE2D_DESC& textureDesc) = 0;
-	virtual void ShadowMapArraySRVDesc(D3D11_SHADER_RESOURCE_VIEW_DESC& textureDesc, UINT arraySize) = 0;
-	virtual void ShadowMapRTVDesc(D3D11_RENDER_TARGET_VIEW_DESC& textureDesc) = 0;
+	virtual void ShadowMapArraySRVDesc(D3D11_SHADER_RESOURCE_VIEW_DESC& srvDesc) = 0;
 
 	virtual UINT& StaticCount() = 0;
 	virtual UINT& StaticCapacity() = 0;
@@ -133,10 +170,9 @@ protected:
 	virtual ID3D11Texture2D*& StaticShadowMapArray() = 0;
 	virtual ID3D11ShaderResourceView*& StaticShadowMapArraySRV() = 0;
 
-private:
-	bool shadowMapUpdated;
-	ID3D11Texture2D* shadowMap;
+	bool setupComplete;
 
+private:
 	int arrayPosition;
 	int FreePosition();
 
@@ -146,6 +182,9 @@ private:
 class ShadowMapSingle320X320 : public ShadowHandlerBase
 {
 public:
+	ShadowMapSingle320X320();
+	~ShadowMapSingle320X320();
+
 	virtual void BindShadows() override;
 
 	virtual int ShadowTypeIndex() override;
@@ -154,8 +193,7 @@ public:
 
 protected:
 	virtual void ShadowMapDesc(D3D11_TEXTURE2D_DESC& textureDesc) override;
-	virtual void ShadowMapArraySRVDesc(D3D11_SHADER_RESOURCE_VIEW_DESC& textureDesc, UINT arraySize) override;
-	virtual void ShadowMapRTVDesc(D3D11_RENDER_TARGET_VIEW_DESC& textureDesc) override;
+	virtual void ShadowMapArraySRVDesc(D3D11_SHADER_RESOURCE_VIEW_DESC& srvDesc) override;
 
 	virtual UINT& StaticCount() override;
 	virtual UINT& StaticCapacity() override;
@@ -165,6 +203,8 @@ protected:
 	virtual ID3D11ShaderResourceView*& StaticShadowMapArraySRV() override;
 
 private:
+	ID3D11DepthStencilView* mapDSV;
+
 	static UINT count;
 	static UINT capacity;
 	static ShadowHandlerBase** slotTracker;
@@ -181,12 +221,8 @@ public:
 protected:
 	virtual DirectX::XMFLOAT4X4 TransformMatrix() override;
 	virtual DirectX::XMFLOAT4X4 InverseTransformMatrix() override;
+	
+	virtual void LightDirection(DirectX::XMFLOAT3& direction) override;
 
 private:
-	
-
-	float pos[3];
-	float padding;
-	float col[3];
-	float padding2;
 };

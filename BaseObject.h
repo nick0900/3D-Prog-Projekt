@@ -35,6 +35,8 @@ class Object
 		DirectX::XMFLOAT3 scale;
 		DirectX::XMFLOAT4X4 rotationMatrix;
 		DirectX::XMFLOAT3 position;
+
+		virtual void OnModyfied();
 		
 	private :
 		bool transformed;

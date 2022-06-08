@@ -189,9 +189,9 @@ void Camera::UpdateProjection()
 		D3D11_MAPPED_SUBRESOURCE mappedResource;
 		ZeroMemory(&mappedResource, sizeof(D3D11_MAPPED_SUBRESOURCE));
 
-		Pipeline::Map::Buffer(projectionBuffer, &mappedResource);
+		Pipeline::ResourceManipulation::MapBuffer(projectionBuffer, &mappedResource);
 		memcpy(mappedResource.pData, &bufferStruct, sizeof(bufferStruct));
-		Pipeline::Unmap::Buffer(projectionBuffer);
+		Pipeline::ResourceManipulation::UnmapBuffer(projectionBuffer);
 
 		projModified = false;
 	}
