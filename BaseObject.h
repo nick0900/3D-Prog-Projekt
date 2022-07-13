@@ -18,14 +18,19 @@ class Object
 {
 	public :
 		void Scale(const std::array<float, 3>& scaling, bool transformSpace, bool transformMode);
+
 		void Rotate(const std::array<float, 3>& rotation, bool transformSpace, bool transformMode, float rotationUnit);
+		void Rotate(DirectX::XMFLOAT4X4& rotation, bool transformSpace, bool transformMode);
+		
 		void Translate(const std::array<float, 3>& translation, bool transformSpace, bool transformMode);
 
 		virtual void Render() = 0;
+		virtual void DepthRender() = 0;
+
+		void UpdateTransformBuffer();
 
 	protected :
 		bool CreateTransformBuffer();
-		void UpdateTransformBuffer();
 		
 		virtual DirectX::XMFLOAT4X4 TransformMatrix();
 		virtual DirectX::XMFLOAT4X4 InverseTransformMatrix();

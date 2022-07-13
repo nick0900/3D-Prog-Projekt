@@ -8,29 +8,32 @@
 #include "Pipeline.h"
 #include "BaseObject.h"
 #include "Camera.h"
+#include "Lights.h"
 
 enum MappingMode
 {
-	SingleMap,
-	DoubleMap,
-	CubeMap
+	SingleMap = 0,
+	DoubleMap = 1,
+	CubeMap = 2
 };
 
 class Renderer
 {
 	public:
-		Renderer(std::vector<Object*>* sceneObjects, std::vector<Camera*>* renderCameras);
+		Renderer(std::vector<Object*>* sceneObjects, std::vector<Camera*>* renderCameras, std::vector<LightBase*>* sceneLights);
 		~Renderer();
 
 		void Render();
 
 		void Switch();
 
+		void LightSetup();
+
 	private:
 		bool DeferredSetup();
 		void CameraDeferredRender(Camera* renderView);
 
-		void CameraDepthMapRender(ID3D11DepthStencilView** mapDSV, ID3D11Buffer* viewBuffer, MappingMode mode);
+		void CameraDepthMapRender(ID3D11DepthStencilView** mapDSV, Camera* view, MappingMode mode);
 
 		void ShadowMapUpdate();
 		void ReflectionUpdate();
@@ -69,4 +72,6 @@ class Renderer
 		std::vector<LightBase*>* sceneLights;
 
 		std::vector<Object*>* sceneObjects;
+
+		LightBinder lightBinder;
 };

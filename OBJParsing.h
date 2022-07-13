@@ -40,7 +40,8 @@ class STDOBJ : public Object
 		~STDOBJ();
 
 		virtual void Render() override;
-		
+		virtual void DepthRender() override;
+
 
 	private:
 		ID3D11Buffer* vertexBuffer;

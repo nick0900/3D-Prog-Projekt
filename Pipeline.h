@@ -81,16 +81,16 @@ namespace Pipeline
 					void CameraViewBuffer(ID3D11Buffer* cameraViewBuffer);
 					void CameraProjectionBuffer(ID3D11Buffer* cameraProjectionBuffer);
 					void CameraViewportBuffer(ID3D11Buffer* cameraViewportBuffer);
+					void LightGeneralInfoBuffer(ID3D11Buffer* infoBuffer);
 					void LightParameterStructuredBuffer(ID3D11Buffer* paramsBuffer);
-
-					void Pointlights(ID3D11Buffer* pointlights, UINT numLights);
-					void Spotlights(ID3D11Buffer* spotlights, UINT numLights);
 
 					void DepthBuffer(ID3D11ShaderResourceView* SRV);
 					void NormalBuffer(ID3D11ShaderResourceView* SRV);
 					void AmbientBuffer(ID3D11ShaderResourceView* SRV);
 					void DiffuesBuffer(ID3D11ShaderResourceView* SRV);
 					void SpecularBuffer(ID3D11ShaderResourceView* SRV);
+
+					void ShadowmapResources(ID3D11ShaderResourceView** shadowmaps, UINT size);
 
 					void BackBufferUAV(ID3D11UnorderedAccessView* UAV);
 				}
@@ -103,6 +103,17 @@ namespace Pipeline
 				bool Dispatch32X18(UINT width, UINT height, UINT topLeftX, UINT topLeftY);
 			}
 		}
+	}
+
+	namespace ShadowMapping
+	{
+		void ClearForShadowMapping();
+		void BindDepthStancils(ID3D11DepthStencilView* mapDSV);
+	}
+
+	namespace ProjectionMapping
+	{
+
 	}
 
 	namespace ResourceManipulation

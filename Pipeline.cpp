@@ -268,9 +268,14 @@ void Pipeline::Deferred::LightPass::ComputeShader::Bind::CameraViewportBuffer(ID
 	Base::immediateContext->CSSetConstantBuffers(2, 1, &cameraViewportBuffer);
 }
 
+void Pipeline::Deferred::LightPass::ComputeShader::Bind::LightGeneralInfoBuffer(ID3D11Buffer* infoBuffer)
+{
+	Base::immediateContext->CSSetConstantBuffers(5, 1, &infoBuffer);
+}
+
 void Pipeline::Deferred::LightPass::ComputeShader::Bind::LightParameterStructuredBuffer(ID3D11Buffer* paramsBuffer)
 {
-	Base::immediateContext->CSSetConstantBuffers(3, 1, &paramsBuffer);
+	Base::immediateContext->CSSetConstantBuffers(4, 1, &paramsBuffer);
 }
 
 void Pipeline::Deferred::LightPass::ComputeShader::Bind::DepthBuffer(ID3D11ShaderResourceView* SRV)
@@ -296,6 +301,11 @@ void Pipeline::Deferred::LightPass::ComputeShader::Bind::DiffuesBuffer(ID3D11Sha
 void Pipeline::Deferred::LightPass::ComputeShader::Bind::SpecularBuffer(ID3D11ShaderResourceView* SRV)
 {
 	Base::immediateContext->CSSetShaderResources(4, 1, &SRV);
+}
+
+void Pipeline::Deferred::LightPass::ComputeShader::Bind::ShadowmapResources(ID3D11ShaderResourceView** shadowmaps, UINT size)
+{
+	Base::immediateContext->CSSetShaderResources(5, size, shadowmaps);
 }
 
 void Pipeline::Deferred::LightPass::ComputeShader::Bind::BackBufferUAV(ID3D11UnorderedAccessView* UAV)

@@ -5,14 +5,19 @@
 
 #include "BaseObject.h"
 
-enum class CameraPreset
-{
-	HDstandard,
-	ShadowCast,
-	ReflectionMap
-};
+/*
+width = 1024;
+height = 576;
+topLeftX = 0;
+topLeftY = 0;
 
-struct ProjBuffer
+FovAngleY = 1.5f;
+AspectRatio = width / height;
+NearZ = 0.01f;
+FarZ = 20.0f;
+*/
+
+struct PerspectiveBuffer
 {
 	DirectX::XMFLOAT4X4 projectionMatrix;
 	
@@ -22,7 +27,7 @@ struct ProjBuffer
 	float projectionConstantA;
 	float projectionConstantB;
 
-	ProjBuffer(float FovAngleY, float AspectRatio, UINT width, UINT height, float NearZ, float FarZ) : 
+	PerspectiveBuffer(float FovAngleY, float AspectRatio, UINT width, UINT height, float NearZ, float FarZ) : 
 
 	widthScalar(tan(FovAngleY / 2.0f)),
 	heightScalar(widthScalar * AspectRatio), 
@@ -33,6 +38,32 @@ struct ProjBuffer
 	projectionMatrix(DirectX::XMFLOAT4X4())
 	{
 		DirectX::XMMATRIX transpose = DirectX::XMMatrixTranspose(DirectX::XMMatrixPerspectiveFovLH(FovAngleY, AspectRatio, NearZ, FarZ));
+
+		DirectX::XMStoreFloat4x4(&projectionMatrix, transpose);
+	}
+};
+
+struct OrthographicBuffer
+{
+	DirectX::XMFLOAT4X4 projectionMatrix;
+
+	float widthScalar;
+	float heightScalar;
+
+	float projectionConstantA;
+	float projectionConstantB;
+
+	OrthographicBuffer(float viewWidth, float viewHeight, UINT width, UINT height, float NearZ, float FarZ) :
+
+		widthScalar(2/viewWidth),
+		heightScalar(2/viewHeight),
+
+		projectionConstantA(1 / (FarZ - NearZ)),
+		projectionConstantB(NearZ / (NearZ - FarZ)),
+
+		projectionMatrix(DirectX::XMFLOAT4X4())
+	{
+		DirectX::XMMATRIX transpose = DirectX::XMMatrixTranspose(DirectX::XMMatrixOrthographicLH(viewWidth, viewHeight, NearZ, FarZ));
 
 		DirectX::XMStoreFloat4x4(&projectionMatrix, transpose);
 	}
@@ -57,31 +88,39 @@ struct ViewBuffer
 class Camera : public Object
 {
 	public :
-		Camera(CameraPreset preset);
-		
-		Camera(UINT width, UINT height, UINT topLeftX, UINT topLeftY, float FovAngleY, float NearZ, float FarZ);
+		Camera(UINT width, UINT height, UINT topLeftX, UINT topLeftY, float NearZ, float FarZ);
 
 		~Camera();
 
-		virtual void Render() override;
-
 		void SetActiveCamera();
+
+		void SetNearPlane(float nearZ);
+		void SetFarPlane(float farZ);
 
 		UINT ViewportWidth();
 		UINT ViewportHeight();
 		UINT ViewportTopLeftX();
 		UINT ViewportTopLeftY();
 
+		void UpdateProjection();
+
 	protected : 
 		virtual DirectX::XMFLOAT4X4 TransformMatrix() override;
 		virtual DirectX::XMFLOAT4X4 InverseTransformMatrix() override;
+
+		virtual void ProjBufferData(void* data, UINT& dataSize) = 0;
+
+		void ProjModified();
+
+		float AspectRatio();
+
+		float NearZ;
+		float FarZ;
 
 	private :
 		bool SetupCamera();
 		void SetViewport();
 		bool CreateBuffers();
-
-		void UpdateProjection();
 
 		UINT width;
 		UINT height;
@@ -89,15 +128,46 @@ class Camera : public Object
 		UINT topLeftY;
 
 		D3D11_VIEWPORT viewport;
-		
-		float FovAngleY;
-		float AspectRatio;
-		float NearZ;
-		float FarZ;
 
 		bool projModified;
 
 		ID3D11Buffer* projectionBuffer;
 
 		ID3D11Buffer* viewBuffer;
+};
+
+class CameraPerspective : public Camera
+{
+public:
+	CameraPerspective(UINT widthPixels, UINT heightPixels, UINT topLeftX, UINT topLeftY, float FovAngleY, float NearZ, float FarZ);
+
+	void SetFOV(float fovAngleY);
+
+	virtual void Render() override;
+	virtual void DepthRender() override;
+
+protected:
+	virtual void ProjBufferData(void* data, UINT& dataSize) override;
+
+private:
+	float FovAngleY;
+	float aspectRatio;
+};
+
+class CameraOrthographic : public Camera
+{
+public:
+	CameraOrthographic(UINT widthPixels, UINT heightPixels, UINT topLeftX, UINT topLeftY, float viewWidth, float NearZ, float FarZ);
+
+	void SetViewWidth(float viewWidth);
+
+	virtual void Render() override;
+	virtual void DepthRender() override;
+
+protected:
+	virtual void ProjBufferData(void* data, UINT& dataSize) override;
+
+private:
+	float WidthScale;
+	float HeightScale;
 };

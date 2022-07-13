@@ -71,6 +71,29 @@ void Object::Rotate(const std::array<float, 3>& rotation, bool transformSpace, b
 	transformed = true;
 }
 
+void Object::Rotate(DirectX::XMFLOAT4X4& rotation, bool transformSpace, bool transformMode)
+{
+	DirectX::XMMATRIX currentTransform = DirectX::XMLoadFloat4x4(&rotationMatrix);
+
+	DirectX::XMMATRIX transformation = DirectX::XMLoadFloat4x4(&rotation);
+
+	if (transformSpace)
+	{
+		transformation = DirectX::XMMatrixTranspose(currentTransform) * transformation * currentTransform;
+	}
+
+	if (transformMode)
+	{
+		currentTransform = DirectX::XMMatrixRotationRollPitchYaw(0.0f, 0.0f, 0.0f);
+	}
+
+	currentTransform *= transformation;
+
+	DirectX::XMStoreFloat4x4(&rotationMatrix, currentTransform);
+
+	transformed = true;
+}
+
 void Object::Translate(const std::array<float, 3>& translation, bool transformSpace, bool transformMode)
 {
 	DirectX::XMFLOAT3 newTranslation = DirectX::XMFLOAT3(translation[0], translation[1], translation[2]);

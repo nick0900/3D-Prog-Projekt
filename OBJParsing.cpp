@@ -60,6 +60,26 @@ void STDOBJ::Render()
 	}
 }
 
+void STDOBJ::DepthRender()
+{
+	UINT stride = sizeof(Vertex);
+	UINT offset = 0;
+
+	Pipeline::Deferred::GeometryPass::VertexShader::Bind::VertexBuffer(stride, offset, vertexBuffer);
+	Pipeline::Deferred::GeometryPass::VertexShader::Bind::IndexBuffer(indexBuffer);
+
+	UpdateTransformBuffer();
+
+	Pipeline::Deferred::GeometryPass::VertexShader::Bind::ObjectTransform(worldTransformBuffer);
+
+	SharedResources::BindVertexShader(SharedResources::vShader::Standard);
+
+	for (Submesh submesh : submeshes)
+	{
+		Pipeline::DrawIndexed(submesh.size, submesh.Start);
+	}
+}
+
 bool GetWord(std::string& word, std::string& line, char splitChar)
 {
 	if (line == "")
