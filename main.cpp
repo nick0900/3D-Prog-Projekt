@@ -16,6 +16,7 @@
 
 int APIENTRY wWinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInstance, _In_ LPWSTR lpCmdLine, _In_ int nCmdShow)
 {
+	//Make sure width and height are multiples of 32 for compute shader to work properly
 	const UINT WIDTH = 1024;
 	const UINT HEIGHT = 576;
 	HWND window;

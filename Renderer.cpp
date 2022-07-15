@@ -66,10 +66,7 @@ Renderer::~Renderer()
 
 void Renderer::Render()
 {
-	ShadowMapUpdate();
 	ReflectionUpdate();
-
-	lightBinder.Bind();
 
 	for (Camera* camera : *renderCameras)
 	{
@@ -80,14 +77,20 @@ void Renderer::Render()
 void Renderer::Switch()
 {
 	Pipeline::Switch();
+	Pipeline::IncrementCounter();
 }
 
-void Renderer::LightSetup()
+void Renderer::CameraDepthRender(ID3D11DepthStencilView* dsv, Camera* view)
 {
-	lightBinder.ClearLights();
-	for (LightBase* light : *sceneLights)
+	Pipeline::ShadowMapping::ClearPixelShader();
+
+	view->SetActiveCamera();
+
+	Pipeline::ShadowMapping::BindDepthStencil(dsv);
+
+	for (Object* object : *sceneObjects)
 	{
-		lightBinder.AddLight(light);
+		object->DepthRender();
 	}
 }
 
@@ -194,8 +197,6 @@ void Renderer::CameraDeferredRender(Camera* renderView)
 
 	Pipeline::Deferred::GeometryPass::PixelShader::Clear::GBuffers();
 
-	SharedResources::BindComputeShader(SharedResources::cShader::standard);
-
 	Pipeline::Deferred::LightPass::ComputeShader::Bind::DepthBuffer(depthSRV);
 	Pipeline::Deferred::LightPass::ComputeShader::Bind::NormalBuffer(normalSRV);
 	Pipeline::Deferred::LightPass::ComputeShader::Bind::AmbientBuffer(ambientSRV);
@@ -204,124 +205,13 @@ void Renderer::CameraDeferredRender(Camera* renderView)
 
 	Pipeline::Deferred::LightPass::ComputeShader::Bind::BackBufferUAV(backBufferUAV);
 
-	Pipeline::Deferred::LightPass::ComputeShader::Dispatch32X18(renderView->ViewportWidth(), renderView->ViewportHeight(), renderView->ViewportTopLeftX(), renderView->ViewportTopLeftY());
-
-	Pipeline::Deferred::LightPass::ComputeShader::Clear::ComputeSRVs();
-}
-
-void Renderer::CameraDepthMapRender(ID3D11DepthStencilView** mapDSV, Camera* view, MappingMode mode)
-{
-	Pipeline::ShadowMapping::ClearForShadowMapping();
-
-	view->SetActiveCamera();
-
-	switch (mode)
-	{
-	case SingleMap:
-		Pipeline::ShadowMapping::BindDepthStancils(*mapDSV);
-
-		for (Object* object : *sceneObjects)
-		{
-			object->DepthRender();
-		}
-		break;
-	
-	case DoubleMap:
-		Pipeline::ShadowMapping::BindDepthStancils(mapDSV[0]);
-
-		for (Object* object : *sceneObjects)
-		{
-			object->DepthRender();
-		}
-
-		view->Rotate({ 0.0f, 180.0f, 0.0f }, OBJECT_TRANSFORM_SPACE_LOCAL, OBJECT_TRANSFORM_APPEND, OBJECT_ROTATION_UNIT_DEGREES);
-		view->UpdateTransformBuffer();
-
-		Pipeline::ShadowMapping::BindDepthStancils(mapDSV[1]);
-
-		for (Object* object : *sceneObjects)
-		{
-			object->DepthRender();
-		}
-		
-		break;
-
-	case CubeMap:
-		view->Rotate({ 0.0f, 90.0f, 0.0f }, OBJECT_TRANSFORM_SPACE_GLOBAL, OBJECT_TRANSFORM_REPLACE, OBJECT_ROTATION_UNIT_DEGREES);
-		view->UpdateTransformBuffer();
-
-		Pipeline::ShadowMapping::BindDepthStancils(mapDSV[0]);
-
-		for (Object* object : *sceneObjects)
-		{
-			object->DepthRender();
-		}
-
-		view->Rotate({ 0.0f, -90.0f, 0.0f }, OBJECT_TRANSFORM_SPACE_GLOBAL, OBJECT_TRANSFORM_REPLACE, OBJECT_ROTATION_UNIT_DEGREES);
-		view->UpdateTransformBuffer();
-
-		Pipeline::ShadowMapping::BindDepthStancils(mapDSV[1]);
-
-		for (Object* object : *sceneObjects)
-		{
-			object->DepthRender();
-		}
-
-		view->Rotate({ -90.0f, 0.0f, 0.0f }, OBJECT_TRANSFORM_SPACE_GLOBAL, OBJECT_TRANSFORM_REPLACE, OBJECT_ROTATION_UNIT_DEGREES);
-		view->UpdateTransformBuffer();
-
-		Pipeline::ShadowMapping::BindDepthStancils(mapDSV[2]);
-
-		for (Object* object : *sceneObjects)
-		{
-			object->DepthRender();
-		}
-
-		view->Rotate({ 90.0f, 0.0f, 0.0f }, OBJECT_TRANSFORM_SPACE_GLOBAL, OBJECT_TRANSFORM_REPLACE, OBJECT_ROTATION_UNIT_DEGREES);
-		view->UpdateTransformBuffer();
-
-		Pipeline::ShadowMapping::BindDepthStancils(mapDSV[3]);
-
-		for (Object* object : *sceneObjects)
-		{
-			object->DepthRender();
-		}
-
-		view->Rotate({ 0.0f, 0.0f, 0.0f }, OBJECT_TRANSFORM_SPACE_GLOBAL, OBJECT_TRANSFORM_REPLACE, OBJECT_ROTATION_UNIT_DEGREES);
-		view->UpdateTransformBuffer();
-
-		Pipeline::ShadowMapping::BindDepthStancils(mapDSV[4]);
-
-		for (Object* object : *sceneObjects)
-		{
-			object->DepthRender();
-		}
-
-		view->Rotate({ 0.0f, 180.0f, 0.0f }, OBJECT_TRANSFORM_SPACE_GLOBAL, OBJECT_TRANSFORM_REPLACE, OBJECT_ROTATION_UNIT_DEGREES);
-		view->UpdateTransformBuffer();
-
-		Pipeline::ShadowMapping::BindDepthStancils(mapDSV[5]);
-
-		for (Object* object : *sceneObjects)
-		{
-			object->DepthRender();
-		}
-		break;
-
-	default:
-		break;
-	}
-}
-
-void Renderer::ShadowMapUpdate()
-{
 	for (LightBase* light : *sceneLights)
 	{
-		if (light->CastShadows())
-		{
-			CameraDepthMapRender(light->ShadowmapDSVs(), light->ShadowMapCamera(), light->ShadowMappingMode());
-		}
+		light->Bind();
+		Pipeline::Deferred::LightPass::ComputeShader::Dispatch32X18(renderView->ViewportWidth(), renderView->ViewportHeight(), renderView->ViewportTopLeftX(), renderView->ViewportTopLeftY());
 	}
+
+	Pipeline::Deferred::LightPass::ComputeShader::Clear::ComputeSRVs();
 }
 
 void Renderer::ReflectionUpdate()

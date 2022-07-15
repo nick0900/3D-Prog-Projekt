@@ -10,13 +10,6 @@
 #include "Camera.h"
 #include "Lights.h"
 
-enum MappingMode
-{
-	SingleMap = 0,
-	DoubleMap = 1,
-	CubeMap = 2
-};
-
 class Renderer
 {
 	public:
@@ -27,15 +20,12 @@ class Renderer
 
 		void Switch();
 
-		void LightSetup();
+		void CameraDepthRender(ID3D11DepthStencilView* dsv, Camera* view);
 
 	private:
 		bool DeferredSetup();
 		void CameraDeferredRender(Camera* renderView);
 
-		void CameraDepthMapRender(ID3D11DepthStencilView** mapDSV, Camera* view, MappingMode mode);
-
-		void ShadowMapUpdate();
 		void ReflectionUpdate();
 
 		bool CreateBackBufferViews();
@@ -72,6 +62,4 @@ class Renderer
 		std::vector<LightBase*>* sceneLights;
 
 		std::vector<Object*>* sceneObjects;
-
-		LightBinder lightBinder;
 };

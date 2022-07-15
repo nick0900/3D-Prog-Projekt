@@ -16,6 +16,9 @@ namespace Pipeline
 	void DrawIndexed(UINT size, UINT start);
 	void Switch();
 
+	void IncrementCounter();
+	UINT FrameCounter();
+
 	namespace Deferred
 	{
 		namespace GeometryPass
@@ -81,16 +84,16 @@ namespace Pipeline
 					void CameraViewBuffer(ID3D11Buffer* cameraViewBuffer);
 					void CameraProjectionBuffer(ID3D11Buffer* cameraProjectionBuffer);
 					void CameraViewportBuffer(ID3D11Buffer* cameraViewportBuffer);
-					void LightGeneralInfoBuffer(ID3D11Buffer* infoBuffer);
-					void LightParameterStructuredBuffer(ID3D11Buffer* paramsBuffer);
+					void LightParameterBuffer(ID3D11Buffer* parameterBuffer);
+					void ShadowmappingBuffer(ID3D11Buffer* shadowmappingBuffer);
+
 
 					void DepthBuffer(ID3D11ShaderResourceView* SRV);
 					void NormalBuffer(ID3D11ShaderResourceView* SRV);
 					void AmbientBuffer(ID3D11ShaderResourceView* SRV);
 					void DiffuesBuffer(ID3D11ShaderResourceView* SRV);
 					void SpecularBuffer(ID3D11ShaderResourceView* SRV);
-
-					void ShadowmapResources(ID3D11ShaderResourceView** shadowmaps, UINT size);
+					void ShadowMapResource(ID3D11ShaderResourceView* SRV);
 
 					void BackBufferUAV(ID3D11UnorderedAccessView* UAV);
 				}
@@ -107,8 +110,9 @@ namespace Pipeline
 
 	namespace ShadowMapping
 	{
-		void ClearForShadowMapping();
-		void BindDepthStancils(ID3D11DepthStencilView* mapDSV);
+		void ClearPixelShader();
+
+		void BindDepthStencil(ID3D11DepthStencilView* dsv);
 	}
 
 	namespace ProjectionMapping
@@ -120,8 +124,5 @@ namespace Pipeline
 	{
 		void MapBuffer(ID3D11Buffer* buffer, D3D11_MAPPED_SUBRESOURCE* mappedResource);
 		void UnmapBuffer(ID3D11Buffer* buffer);
-
-		void StructuredBufferCpy(ID3D11Buffer* dst, UINT dstPosition, ID3D11Buffer* src, UINT srcStart, UINT srcEnd);
-		void TextureArrayCpy(ID3D11Texture2D* dst, UINT dstPosition, ID3D11Texture2D* src, UINT srcStart, UINT srcEnd);
 	}
 }

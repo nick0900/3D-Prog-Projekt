@@ -45,6 +45,7 @@ void Object::Scale(const std::array<float, 3>& scaling, bool transformSpace, boo
 		scale.z += newScale.z;
 	}
 
+	OnModyfied();
 	transformed = true;
 }
 
@@ -68,6 +69,7 @@ void Object::Rotate(const std::array<float, 3>& rotation, bool transformSpace, b
 
 	DirectX::XMStoreFloat4x4(&rotationMatrix, currentTransform);
 
+	OnModyfied();
 	transformed = true;
 }
 
@@ -91,6 +93,7 @@ void Object::Rotate(DirectX::XMFLOAT4X4& rotation, bool transformSpace, bool tra
 
 	DirectX::XMStoreFloat4x4(&rotationMatrix, currentTransform);
 
+	OnModyfied();
 	transformed = true;
 }
 
@@ -118,6 +121,7 @@ void Object::Translate(const std::array<float, 3>& translation, bool transformSp
 		position.z += newTranslation.z;
 	}
 
+	OnModyfied();
 	transformed = true;
 }
 

@@ -279,7 +279,14 @@ void SharedResources::Setup()
 
 	Static::Shaders::Pixel.push_back(new PShader("PSParameterGeometryPass.cso"));
 
-	Static::Shaders::Compute.push_back(new CShader("CSLightPass.cso"));
+	Static::Shaders::Compute.push_back(new CShader("CSPointLight.cso"));
+	Static::Shaders::Compute.push_back(new CShader("CSPointLightShadow.cso"));
+
+	Static::Shaders::Compute.push_back(new CShader("CSDirectionalLight.cso"));
+	Static::Shaders::Compute.push_back(new CShader("CSDirectionalLightShadow.cso"));
+
+	Static::Shaders::Compute.push_back(new CShader("CSSpotLight.cso"));
+	Static::Shaders::Compute.push_back(new CShader("CSSpotLightShadow.cso"));
 
 	Static::materials = new Materials();
 	Static::textures = new Textures();

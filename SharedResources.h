@@ -141,7 +141,14 @@ namespace SharedResources
 
 	enum cShader
 	{
-		standard = 0
+		PointLight = 0,
+		PointLightShadow = 1,
+
+		DirectionalLight = 2,
+		DirectionalLightShadow = 3,
+
+		SpotLight = 4,
+		SpotLightShadow = 5,
 	};
 	void BindComputeShader(cShader ID);
 }

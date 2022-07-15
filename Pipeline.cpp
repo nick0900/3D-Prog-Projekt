@@ -1,5 +1,4 @@
 #include <Windows.h>
-
 #include <iostream>
 
 #include "Pipeline.h"
@@ -12,6 +11,8 @@ namespace Base
 
 	static UINT backBufferWidth;
 	static UINT backBufferHeight;
+
+	static UINT frameCount;
 }
 
 namespace PixelShading
@@ -59,6 +60,8 @@ bool Pipeline::SetupRender(UINT width, UINT height, HWND window)
 {
 	Base::backBufferWidth = width;
 	Base::backBufferHeight = height;
+
+	Base::frameCount = 0;
 
 	if (!CreateInterfaces(width, height, window, Base::device, Base::immediateContext, Base::swapChain))
 	{
@@ -152,6 +155,16 @@ void Pipeline::DrawIndexed(UINT size, UINT start)
 void Pipeline::Switch()
 {
 	Base::swapChain->Present(0, 0);
+}
+
+void Pipeline::IncrementCounter()
+{
+	Base::frameCount++;
+}
+
+UINT Pipeline::FrameCounter()
+{
+	return Base::frameCount;
 }
 
 void Pipeline::Deferred::GeometryPass::Clear::DepthStencilView(ID3D11DepthStencilView* dsv)
@@ -268,14 +281,14 @@ void Pipeline::Deferred::LightPass::ComputeShader::Bind::CameraViewportBuffer(ID
 	Base::immediateContext->CSSetConstantBuffers(2, 1, &cameraViewportBuffer);
 }
 
-void Pipeline::Deferred::LightPass::ComputeShader::Bind::LightGeneralInfoBuffer(ID3D11Buffer* infoBuffer)
+void Pipeline::Deferred::LightPass::ComputeShader::Bind::LightParameterBuffer(ID3D11Buffer* parameterBuffer)
 {
-	Base::immediateContext->CSSetConstantBuffers(5, 1, &infoBuffer);
+	Base::immediateContext->CSSetConstantBuffers(3, 1, &parameterBuffer);
 }
 
-void Pipeline::Deferred::LightPass::ComputeShader::Bind::LightParameterStructuredBuffer(ID3D11Buffer* paramsBuffer)
+void Pipeline::Deferred::LightPass::ComputeShader::Bind::ShadowmappingBuffer(ID3D11Buffer* shadowmappingBuffer)
 {
-	Base::immediateContext->CSSetConstantBuffers(4, 1, &paramsBuffer);
+	Base::immediateContext->CSSetConstantBuffers(4, 1, &shadowmappingBuffer);
 }
 
 void Pipeline::Deferred::LightPass::ComputeShader::Bind::DepthBuffer(ID3D11ShaderResourceView* SRV)
@@ -303,9 +316,9 @@ void Pipeline::Deferred::LightPass::ComputeShader::Bind::SpecularBuffer(ID3D11Sh
 	Base::immediateContext->CSSetShaderResources(4, 1, &SRV);
 }
 
-void Pipeline::Deferred::LightPass::ComputeShader::Bind::ShadowmapResources(ID3D11ShaderResourceView** shadowmaps, UINT size)
+void Pipeline::Deferred::LightPass::ComputeShader::Bind::ShadowMapResource(ID3D11ShaderResourceView* SRV)
 {
-	Base::immediateContext->CSSetShaderResources(5, size, shadowmaps);
+	Base::immediateContext->CSSetShaderResources(5, 1, &SRV);
 }
 
 void Pipeline::Deferred::LightPass::ComputeShader::Bind::BackBufferUAV(ID3D11UnorderedAccessView* UAV)
@@ -354,26 +367,12 @@ void Pipeline::ResourceManipulation::UnmapBuffer(ID3D11Buffer* buffer)
 	Base::immediateContext->Unmap(buffer, 0);
 }
 
-void Pipeline::ResourceManipulation::StructuredBufferCpy(ID3D11Buffer* dst, UINT dstPosition, ID3D11Buffer* src, UINT srcStart, UINT srcEnd)
+void Pipeline::ShadowMapping::ClearPixelShader()
 {
-	D3D11_BOX box;
-	box.left = srcStart;
-	box.right = srcEnd;
-	box.front = 0;
-	box.back = 0;
-	box.top = 0;
-	box.bottom = 0;
-	Base::immediateContext->CopySubresourceRegion(dst, 1, dstPosition, 0, 0, src, 1, &box);
+	Base::immediateContext->PSSetShader(nullptr, nullptr, 0);
 }
 
-void Pipeline::ResourceManipulation::TextureArrayCpy(ID3D11Texture2D* dst, UINT dstPosition, ID3D11Texture2D* src, UINT srcStart, UINT srcEnd)
+void Pipeline::ShadowMapping::BindDepthStencil(ID3D11DepthStencilView* dsv)
 {
-	D3D11_BOX box;
-	box.left = srcStart;
-	box.right = srcEnd;
-	box.front = 0;
-	box.back = 0;
-	box.top = 0;
-	box.bottom = 0;
-	Base::immediateContext->CopySubresourceRegion(dst, 1, dstPosition, 0, 0, src, 1, &box);
+	Base::immediateContext->OMSetRenderTargets(0, nullptr, dsv);
 }

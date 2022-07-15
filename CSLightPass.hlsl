@@ -24,6 +24,22 @@ cbuffer CameraViewport : register(b2)
     uint topLeftY;
 };
 
+cbuffer TypeCheck : register(b3)
+{
+    int lightType;
+};
+
+cbuffer PointLight : register(b3)
+{
+    int PointLightType;
+};
+
+cbuffer shadowmappingMatrices : register(b4)
+{
+    float4x4 shadowView;
+    float4x4 shadowProjection;
+};
+
 //Implement viewport start position
 //dispatch call need to recieve camera start xy and perform chacks and potential modifications to make sure CS works within backbuffer bounds
 
@@ -50,6 +66,8 @@ void main( uint3 pixelCoords : SV_DispatchThreadID )
     float yPosition = (1.0f / 2.0f - ycoord / height) * 2 * heightScalar * zDepth;
     
     float3 pixelPosition = float3(xPosition, yPosition, zDepth);
+    
+    zDepth = lightType + PointLightType;
     
     backBuffer[uint2(topLeftX + pixelCoords.x, topLeftY + pixelCoords.y)] = float4(pixelPosition, 1.0f);
 }

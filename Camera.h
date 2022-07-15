@@ -102,25 +102,26 @@ class Camera : public Object
 		UINT ViewportTopLeftX();
 		UINT ViewportTopLeftY();
 
-		void UpdateProjection();
-
 	protected : 
 		virtual DirectX::XMFLOAT4X4 TransformMatrix() override;
 		virtual DirectX::XMFLOAT4X4 InverseTransformMatrix() override;
 
-		virtual void ProjBufferData(void* data, UINT& dataSize) = 0;
+		virtual void UpdateProjection() = 0;
 
-		void ProjModified();
+		void FlagProjChange();
+
+		bool SetupCamera();
+		virtual bool CreateBuffers() = 0;
 
 		float AspectRatio();
 
 		float NearZ;
 		float FarZ;
 
+		ID3D11Buffer* projectionBuffer;
+
 	private :
-		bool SetupCamera();
 		void SetViewport();
-		bool CreateBuffers();
 
 		UINT width;
 		UINT height;
@@ -130,8 +131,6 @@ class Camera : public Object
 		D3D11_VIEWPORT viewport;
 
 		bool projModified;
-
-		ID3D11Buffer* projectionBuffer;
 
 		ID3D11Buffer* viewBuffer;
 };
@@ -147,7 +146,8 @@ public:
 	virtual void DepthRender() override;
 
 protected:
-	virtual void ProjBufferData(void* data, UINT& dataSize) override;
+	virtual void UpdateProjection() override;
+	virtual bool CreateBuffers() override;
 
 private:
 	float FovAngleY;
@@ -165,7 +165,8 @@ public:
 	virtual void DepthRender() override;
 
 protected:
-	virtual void ProjBufferData(void* data, UINT& dataSize) override;
+	virtual void UpdateProjection() override;
+	virtual bool CreateBuffers() override;
 
 private:
 	float WidthScale;

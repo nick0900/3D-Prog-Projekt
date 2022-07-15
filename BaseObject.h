@@ -29,11 +29,11 @@ class Object
 
 		void UpdateTransformBuffer();
 
-	protected :
-		bool CreateTransformBuffer();
-		
 		virtual DirectX::XMFLOAT4X4 TransformMatrix();
 		virtual DirectX::XMFLOAT4X4 InverseTransformMatrix();
+
+	protected :
+		bool CreateTransformBuffer();
 		
 		ID3D11Buffer* worldTransformBuffer;
 

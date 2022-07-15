@@ -4,20 +4,33 @@
 
 #include "Pipeline.h"
 
-Camera::Camera(UINT widthPixels, UINT heightPixels, UINT topLeftX, UINT topLeftY, float NearZ, float FarZ) : width(widthPixels), height(heightPixels), topLeftX(topLeftX), topLeftY(topLeftY), NearZ(NearZ), FarZ(FarZ), projectionBuffer(nullptr)
+Camera::Camera(UINT widthPixels, UINT heightPixels, UINT topLeftX, UINT topLeftY, float NearZ, float FarZ) : width(widthPixels), height(heightPixels), topLeftX(topLeftX), topLeftY(topLeftY), NearZ(NearZ), FarZ(FarZ), projectionBuffer(nullptr), projModified(false)
 {
 	if (!CreateTransformBuffer())
 	{
 		std::cerr << "Failed to create camera transform Buffer" << std::endl;
 	}
-	if (!SetupCamera())
-	{
-		std::cerr << "Failed to set up camera!" << std::endl;
-	}
-}
 
-Camera::Camera(UINT width, UINT height, UINT topLeftX, UINT topLeftY, float NearZ, float FarZ)
-{
+	D3D11_BUFFER_DESC bufferDesc;
+
+	ViewBuffer viewStruct = ViewBuffer(width, height, topLeftX, topLeftY);
+
+	bufferDesc.ByteWidth = sizeof(ViewBuffer);
+	bufferDesc.Usage = D3D11_USAGE_IMMUTABLE;
+	bufferDesc.BindFlags = D3D11_BIND_CONSTANT_BUFFER;
+	bufferDesc.CPUAccessFlags = 0;
+	bufferDesc.MiscFlags = 0;
+	bufferDesc.StructureByteStride = 0;
+
+	D3D11_SUBRESOURCE_DATA data;
+	data.pSysMem = &viewStruct;
+	data.SysMemPitch = 0;
+	data.SysMemSlicePitch = 0;
+
+	if (FAILED(Pipeline::Device()->CreateBuffer(&bufferDesc, &data, &viewBuffer)))
+	{
+		std::cerr << "Failed to create camera viewport buffer!" << std::endl;
+	}
 }
 
 Camera::~Camera()
@@ -34,7 +47,11 @@ void Camera::SetActiveCamera()
 	Pipeline::Deferred::GeometryPass::VertexShader::Bind::cameraViewBuffer(worldTransformBuffer);
 	Pipeline::Deferred::LightPass::ComputeShader::Bind::CameraViewBuffer(worldTransformBuffer);
 
-	UpdateProjection();
+	if (projModified)
+	{
+		UpdateProjection();
+		projModified = false;
+	}
 	Pipeline::Deferred::GeometryPass::VertexShader::Bind::cameraProjectionBuffer(projectionBuffer);
 	Pipeline::Deferred::LightPass::ComputeShader::Bind::CameraProjectionBuffer(projectionBuffer);
 
@@ -44,13 +61,13 @@ void Camera::SetActiveCamera()
 void Camera::SetNearPlane(float nearZ)
 {
 	NearZ = nearZ;
-	ProjModified();
+	FlagProjChange();
 }
 
 void Camera::SetFarPlane(float farZ)
 {
 	FarZ = farZ;
-	ProjModified();
+	FlagProjChange();
 }
 
 UINT Camera::ViewportWidth()
@@ -103,11 +120,6 @@ DirectX::XMFLOAT4X4 Camera::InverseTransformMatrix()
 	return output;
 }
 
-void Camera::ProjModified()
-{
-	projModified = true;
-}
-
 float Camera::AspectRatio()
 {
 	return (float)width / (float)height;
@@ -134,68 +146,9 @@ void Camera::SetViewport()
 	viewport.MaxDepth = 1;
 }
 
-bool Camera::CreateBuffers()
+void Camera::FlagProjChange()
 {
-	D3D11_BUFFER_DESC bufferDesc;
-
-	projModified = false;
-	void* projStruct = nullptr;
-	UINT structSize;
-	ProjBufferData(projStruct, structSize);
-
-	bufferDesc.ByteWidth = structSize;
-	bufferDesc.Usage = D3D11_USAGE_DYNAMIC;
-	bufferDesc.BindFlags = D3D11_BIND_CONSTANT_BUFFER;
-	bufferDesc.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;
-	bufferDesc.MiscFlags = 0;
-	bufferDesc.StructureByteStride = 0;
-
-	D3D11_SUBRESOURCE_DATA data;
-	data.pSysMem = projStruct;
-	data.SysMemPitch = 0;
-	data.SysMemSlicePitch = 0;
-
-	if (FAILED(Pipeline::Device()->CreateBuffer(&bufferDesc, &data, &projectionBuffer)))
-	{
-		return false;
-	}
-
-	if (projStruct != nullptr) delete projStruct;
-
-	bufferDesc.ByteWidth = sizeof(ViewBuffer);
-	bufferDesc.Usage = D3D11_USAGE_IMMUTABLE;
-	bufferDesc.CPUAccessFlags = 0;
-
-	ViewBuffer viewStruct = ViewBuffer(width, height, topLeftX, topLeftY);
-
-	data.pSysMem = &viewStruct;
-
-	if (FAILED(Pipeline::Device()->CreateBuffer(&bufferDesc, &data, &viewBuffer)))
-	{
-		return false;
-	}
-
-	return true;
-}
-
-void Camera::UpdateProjection()
-{
-	if (projModified)
-	{
-		D3D11_MAPPED_SUBRESOURCE mappedResource;
-		
-		void* projStruct = nullptr;
-		UINT structSize;
-		ProjBufferData(projStruct, structSize);
-
-		Pipeline::ResourceManipulation::MapBuffer(projectionBuffer, &mappedResource);
-		memcpy(mappedResource.pData, projStruct, sizeof(structSize));
-		Pipeline::ResourceManipulation::UnmapBuffer(projectionBuffer);
-
-		if (projStruct != nullptr) delete projStruct;
-
-		projModified = false;
-	}
+	projModified = true;
 }
 
 CameraPerspective::CameraPerspective(UINT widthPixels, UINT heightPixels, UINT topLeftX, UINT topLeftY, float FovAngleY, float NearZ, float FarZ) :
@@ -203,12 +156,16 @@ CameraPerspective::CameraPerspective(UINT widthPixels, UINT heightPixels, UINT t
 	FovAngleY(FovAngleY), 
 	aspectRatio(AspectRatio())
 {
+	if (!SetupCamera())
+	{
+		std::cerr << "Failed to set up camera!" << std::endl;
+	}
 }
 
 void CameraPerspective::SetFOV(float fovAngleY)
 {
 	FovAngleY = fovAngleY;
-	ProjModified();
+	FlagProjChange();
 }
 
 void CameraPerspective::Render()
@@ -219,10 +176,41 @@ void CameraPerspective::DepthRender()
 {
 }
 
-void CameraPerspective::ProjBufferData(void* data, UINT& dataSize)
+void CameraPerspective::UpdateProjection()
 {
-	data = new PerspectiveBuffer(FovAngleY, aspectRatio, ViewportWidth(), ViewportHeight(), NearZ, FarZ);
-	dataSize = sizeof(PerspectiveBuffer);
+	D3D11_MAPPED_SUBRESOURCE mappedResource;
+
+	PerspectiveBuffer bufferStruct = PerspectiveBuffer(FovAngleY, aspectRatio, ViewportWidth(), ViewportHeight(), NearZ, FarZ);
+
+	Pipeline::ResourceManipulation::MapBuffer(projectionBuffer, &mappedResource);
+	memcpy(mappedResource.pData, &bufferStruct, sizeof(bufferStruct));
+	Pipeline::ResourceManipulation::UnmapBuffer(projectionBuffer);
+}
+
+bool CameraPerspective::CreateBuffers()
+{
+	D3D11_BUFFER_DESC bufferDesc;
+	
+	PerspectiveBuffer bufferStruct = PerspectiveBuffer(FovAngleY, aspectRatio, ViewportWidth(), ViewportHeight(), NearZ, FarZ);
+
+	bufferDesc.ByteWidth = sizeof(bufferStruct);
+	bufferDesc.Usage = D3D11_USAGE_DYNAMIC;
+	bufferDesc.BindFlags = D3D11_BIND_CONSTANT_BUFFER;
+	bufferDesc.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;
+	bufferDesc.MiscFlags = 0;
+	bufferDesc.StructureByteStride = 0;
+
+	D3D11_SUBRESOURCE_DATA data;
+	data.pSysMem = &bufferStruct;
+	data.SysMemPitch = 0;
+	data.SysMemSlicePitch = 0;
+
+	if (FAILED(Pipeline::Device()->CreateBuffer(&bufferDesc, &data, &projectionBuffer)))
+	{
+		return false;
+	}
+
+	return true;
 }
 
 CameraOrthographic::CameraOrthographic(UINT widthPixels, UINT heightPixels, UINT topLeftX, UINT topLeftY, float viewWidth, float NearZ, float FarZ) :
@@ -230,6 +218,10 @@ CameraOrthographic::CameraOrthographic(UINT widthPixels, UINT heightPixels, UINT
 	WidthScale(viewWidth),
 	HeightScale(viewWidth / AspectRatio())
 {
+	if (!SetupCamera())
+	{
+		std::cerr << "Failed to set up camera!" << std::endl;
+	}
 }
 
 void CameraOrthographic::SetViewWidth(float viewWidth)
@@ -246,8 +238,39 @@ void CameraOrthographic::DepthRender()
 {
 }
 
-void CameraOrthographic::ProjBufferData(void* data, UINT& dataSize)
+void CameraOrthographic::UpdateProjection()
 {
-	data = new OrthographicBuffer(WidthScale, HeightScale, ViewportWidth(), ViewportHeight(), NearZ, FarZ);
-	dataSize = sizeof(OrthographicBuffer);
+	D3D11_MAPPED_SUBRESOURCE mappedResource;
+
+	OrthographicBuffer bufferStruct = OrthographicBuffer(WidthScale, HeightScale, ViewportWidth(), ViewportHeight(), NearZ, FarZ);
+
+	Pipeline::ResourceManipulation::MapBuffer(projectionBuffer, &mappedResource);
+	memcpy(mappedResource.pData, &bufferStruct, sizeof(bufferStruct));
+	Pipeline::ResourceManipulation::UnmapBuffer(projectionBuffer);
+}
+
+bool CameraOrthographic::CreateBuffers()
+{
+	D3D11_BUFFER_DESC bufferDesc;
+
+	OrthographicBuffer bufferStruct = OrthographicBuffer(WidthScale, HeightScale, ViewportWidth(), ViewportHeight(), NearZ, FarZ);
+
+	bufferDesc.ByteWidth = sizeof(bufferStruct);
+	bufferDesc.Usage = D3D11_USAGE_DYNAMIC;
+	bufferDesc.BindFlags = D3D11_BIND_CONSTANT_BUFFER;
+	bufferDesc.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;
+	bufferDesc.MiscFlags = 0;
+	bufferDesc.StructureByteStride = 0;
+
+	D3D11_SUBRESOURCE_DATA data;
+	data.pSysMem = &bufferStruct;
+	data.SysMemPitch = 0;
+	data.SysMemSlicePitch = 0;
+
+	if (FAILED(Pipeline::Device()->CreateBuffer(&bufferDesc, &data, &projectionBuffer)))
+	{
+		return false;
+	}
+
+	return true;
 }
