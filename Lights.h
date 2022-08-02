@@ -23,29 +23,40 @@ struct ShadowMappingBuffer
 
 enum LightShaderMode
 {
-	PointLightNoShadow = 0,
-	PointLightShadow = 1,
-	DirectionalLightNoShadow = 2,
-	DirectionalLightShadow = 3,
-	SpotLightNoShadow = 4,
-	SpotLightShadow = 5
+	LightTypeAmbientBasic = 0,
+	LightTypePoint = 1,
+	LightTypeDirectional = 2,
+	LightTypeSpot = 3
+};
+
+struct AmbientLightBuffer
+{
+	float ambient[3];
+	float padding;
+
+	AmbientLightBuffer(const std::array<float, 3>& ambient) : padding(0.0f)
+	{
+		for (int i = 0; i < 3; i++)
+		{
+			this->ambient[i] = ambient[i];
+		}
+	}
 };
 
 struct PointLightBuffer
 {
-	int lightType;
-	float falloff;
 	float diffuse[3];
-	float specular[3];
-	float position[3];
+	float falloff;
 	
+	float specular[3];
+	float padding1;
 
-	float padding;
+	float position[3];
+	float padding2;
 
-	PointLightBuffer(float falloff, const std::array<float, 3>& diffuse, const std::array<float, 3>& specular, const std::array<float, 3>& position, bool castShadows) :
-		falloff(falloff), padding(0.0f)
+	PointLightBuffer(float falloff, const std::array<float, 3>& diffuse, const std::array<float, 3>& specular, const std::array<float, 3>& position) :
+		falloff(falloff), padding1(0.0f), padding2(0.0f)
 	{
-		lightType = castShadows ? PointLightShadow : PointLightNoShadow;
 		for (int i = 0; i < 3; i++)
 		{
 			this->diffuse[i] = diffuse[i];
@@ -57,44 +68,49 @@ struct PointLightBuffer
 
 struct DirectionalLightBuffer
 {
-	int lightType;
 	float diffuse[3];
+	float padding1;
+
 	float specular[3];
+	float padding2;
+
 	float direction[3];
+	float padding3;
 
-	float padding[2];
-
-	DirectionalLightBuffer(const std::array<float, 3>& diffuse, const std::array<float, 3>& specular, const std::array<float, 3>& direction, bool castShadows)
+	DirectionalLightBuffer(const std::array<float, 3>& diffuse, const std::array<float, 3>& specular, const std::array<float, 3>& direction) :
+		padding1(0.0f),
+		padding2(0.0f),
+		padding3(0.0f)
 	{
-		lightType = castShadows ? DirectionalLightShadow : DirectionalLightNoShadow;
 		for (int i = 0; i < 3; i++)
 		{
 			this->diffuse[i] = diffuse[i];
 			this->specular[i] = specular[i];
 			this->direction[i] = direction[i];
 		}
-		this->padding[0] = 0.0f;
-		this->padding[1] = 0.0f;
 	}
 };
 
 struct SpotLightBuffer
 {
-	int lightType;
-	float falloff;
-	float lightFOV;
 	float diffuse[3];
+	float falloff;
+
 	float specular[3];
+	float lightFOV;
+
 	float position[3];
+	float padding1;
+
 	float direction[3];
+	float padding2;
 
-	float padding;
-
-	SpotLightBuffer(float lightFOV, float falloff, const std::array<float, 3>& diffuse, const std::array<float, 3>& specular, const std::array<float, 3>& position, const std::array<float, 3>& direction, bool castShadows) :
-		lightFOV(lightFOV),
-		falloff(falloff)
+	SpotLightBuffer(float lightFOV, float falloff, const std::array<float, 3>& diffuse, const std::array<float, 3>& specular, const std::array<float, 3>& position, const std::array<float, 3>& direction) :
+		lightFOV(cosf(lightFOV * OBJECT_ROTATION_UNIT_DEGREES / 2)),
+		falloff(falloff),
+		padding1(0.0f),
+		padding2(0.0f)
 	{
-		lightType = castShadows ? SpotLightShadow : SpotLightNoShadow;
 		for (int i = 0; i < 3; i++)
 		{
 			this->diffuse[i] = diffuse[i];
@@ -102,7 +118,6 @@ struct SpotLightBuffer
 			this->position[i] = position[i];
 			this->direction[i] = direction[i];
 		}
-		this->padding = 0.0f;
 	}
 };
 
@@ -130,11 +145,10 @@ public:
 	virtual DirectX::XMFLOAT4X4 ProjMatrix() = 0;
 
 protected:
+	virtual void BindBuffer() = 0;
+
 	virtual void UpdateParameterBuffer() = 0;
 	void flagParameterChange();
-
-	virtual SharedResources::cShader LightShader() = 0;
-	
 
 	virtual void OnModyfied() override;
 	Shadowmap* shadowmap;
@@ -148,6 +162,33 @@ private:
 	std::array<float, 3> lightSpecular;
 
 	bool parametersModifyed;
+};
+
+class AmbientLight : public LightBase
+{
+public:
+	AmbientLight(const std::array<float, 3>& ambient);
+
+	void SetAmbient(std::array<float, 3> lightAmbient);
+	std::array<float, 3> Ambient();
+
+	virtual Camera* ShadowMapCamera() override;
+
+	virtual void Render() override;
+	virtual void DepthRender() override;
+
+protected:
+	virtual void BindBuffer() override;
+
+	virtual void UpdateParameterBuffer() override;
+
+	virtual DirectX::XMFLOAT4X4 TransformMatrix() override;
+	virtual DirectX::XMFLOAT4X4 InverseTransformMatrix() override;
+
+	virtual DirectX::XMFLOAT4X4 ProjMatrix() override;
+
+private:
+	std::array<float, 3> lightAmbient;
 };
 
 class PointLight : public LightBase
@@ -164,9 +205,9 @@ public:
 	virtual void DepthRender() override;
 
 protected:
-	virtual void UpdateParameterBuffer() override;
+	virtual void BindBuffer() override;
 
-	virtual SharedResources::cShader LightShader() override;
+	virtual void UpdateParameterBuffer() override;
 
 	virtual DirectX::XMFLOAT4X4 TransformMatrix() override;
 	virtual DirectX::XMFLOAT4X4 InverseTransformMatrix() override;
@@ -192,9 +233,9 @@ public:
 	virtual void DepthRender() override;
 
 protected:
-	virtual void UpdateParameterBuffer() override;
+	virtual void BindBuffer() override;
 
-	virtual SharedResources::cShader LightShader() override;
+	virtual void UpdateParameterBuffer() override;
 
 	virtual DirectX::XMFLOAT4X4 TransformMatrix() override;
 	virtual DirectX::XMFLOAT4X4 InverseTransformMatrix() override;
@@ -222,9 +263,9 @@ public:
 	virtual void DepthRender() override;
 
 protected:
-	virtual void UpdateParameterBuffer() override;
+	virtual void BindBuffer() override;
 
-	virtual SharedResources::cShader LightShader() override;
+	virtual void UpdateParameterBuffer() override;
 
 	virtual DirectX::XMFLOAT4X4 TransformMatrix() override;
 	virtual DirectX::XMFLOAT4X4 InverseTransformMatrix() override;
@@ -243,7 +284,7 @@ class Shadowmap
 {
 public:
 	Shadowmap(UINT resolution, LightBase* linkedLight, Renderer* renderer);
-	~Shadowmap();
+	virtual ~Shadowmap();
 
 	void Bind();
 
@@ -252,6 +293,7 @@ public:
 	int Resolution();
 
 protected:
+	virtual void BindMap() = 0;
 	virtual void MapRender() = 0;
 	Renderer* renderer;
 
@@ -273,9 +315,10 @@ class ShadowMapSingle : public Shadowmap
 {
 public:
 	ShadowMapSingle(UINT resolution, LightBase* linkedLight, Renderer* renderer);
-	~ShadowMapSingle();
+	virtual ~ShadowMapSingle();
 
 protected:
+	virtual void BindMap() override;
 	virtual void MapRender() override;
 
 private:
@@ -286,11 +329,14 @@ class ShadowMapCube : public Shadowmap
 {
 public:
 	ShadowMapCube(UINT resolution, LightBase* linkedLight, Renderer* renderer);
-	~ShadowMapCube();
+	virtual ~ShadowMapCube();
 
 protected:
+	virtual void BindMap() override;
 	virtual void MapRender() override;
 
 private:
-	ID3D11DepthStencilView* mapDSV[6];
+	ID3D11RenderTargetView* mapRTV[6];
+	ID3D11Texture2D* depthStencilTexture;
+	ID3D11DepthStencilView* DSV;
 };

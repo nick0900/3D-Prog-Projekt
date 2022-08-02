@@ -2,6 +2,7 @@
 #include <iostream>
 
 #include "Pipeline.h"
+#include "SharedResources.h"
 
 namespace Base
 {
@@ -15,9 +16,25 @@ namespace Base
 	static UINT frameCount;
 }
 
-namespace PixelShading
+namespace Samplers
 {
-	static ID3D11SamplerState* sampler;
+	static ID3D11SamplerState* samplerwrap;
+	static ID3D11SamplerState* samplerBorderBlack;
+	static ID3D11SamplerState* samplerBorderWhite;
+}
+
+namespace CSConfig
+{
+	struct CSSettings
+	{
+		int lightType = -1;
+		int shadowMapType = -1;
+		float shadowBias = 0.005f;
+		bool shadowcaster = false;
+		bool padding[3];
+	} settings;
+
+	ID3D11Buffer* CSConfigBuffer;
 }
 
 bool CreateInterfaces(UINT width, UINT height, HWND window, ID3D11Device*& device, ID3D11DeviceContext*& immediateContext, IDXGISwapChain*& swapChain)
@@ -81,13 +98,59 @@ bool Pipeline::SetupRender(UINT width, UINT height, HWND window)
 	samplerDesc.MinLOD = 0;
 	samplerDesc.MaxLOD = 0;
 
-	if (FAILED(Base::device->CreateSamplerState(&samplerDesc, &PixelShading::sampler)))
+	if (FAILED(Base::device->CreateSamplerState(&samplerDesc, &Samplers::samplerwrap)))
 	{
 		std::cerr << "Failed to create sampler!" << std::endl;
 		return false;
 	}
 
-	Base::immediateContext->PSSetSamplers(0, 1, &PixelShading::sampler);
+	samplerDesc.AddressU = D3D11_TEXTURE_ADDRESS_BORDER;
+	samplerDesc.AddressV = D3D11_TEXTURE_ADDRESS_BORDER;
+	samplerDesc.AddressW = D3D11_TEXTURE_ADDRESS_BORDER;
+	samplerDesc.BorderColor[0] = 0.0f;
+	samplerDesc.BorderColor[1] = 0.0f;
+	samplerDesc.BorderColor[2] = 0.0f;
+	samplerDesc.BorderColor[3] = 0.0f;
+
+	if (FAILED(Base::device->CreateSamplerState(&samplerDesc, &Samplers::samplerBorderBlack)))
+	{
+		std::cerr << "Failed to create sampler!" << std::endl;
+		return false;
+	}
+
+	samplerDesc.BorderColor[0] = 1.0f;
+	samplerDesc.BorderColor[1] = 1.0f;
+	samplerDesc.BorderColor[2] = 1.0f;
+	samplerDesc.BorderColor[3] = 1.0f;
+
+	if (FAILED(Base::device->CreateSamplerState(&samplerDesc, &Samplers::samplerBorderWhite)))
+	{
+		std::cerr << "Failed to create sampler!" << std::endl;
+		return false;
+	}
+
+	Base::immediateContext->PSSetSamplers(0, 1, &Samplers::samplerwrap);
+	Base::immediateContext->CSSetSamplers(0, 1, &Samplers::samplerwrap);
+
+	D3D11_BUFFER_DESC bufferDesc;
+
+	bufferDesc.ByteWidth = sizeof(CSConfig::CSSettings);
+	bufferDesc.Usage = D3D11_USAGE_DYNAMIC;
+	bufferDesc.BindFlags = D3D11_BIND_CONSTANT_BUFFER;
+	bufferDesc.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;
+	bufferDesc.MiscFlags = 0;
+	bufferDesc.StructureByteStride = 0;
+
+	D3D11_SUBRESOURCE_DATA data;
+	data.pSysMem = &CSConfig::settings;
+	data.SysMemPitch = 0;
+	data.SysMemSlicePitch = 0;
+
+	if (FAILED(Pipeline::Device()->CreateBuffer(&bufferDesc, &data, &CSConfig::CSConfigBuffer)))
+	{
+		std::cerr << "Failed to create compute shader config buffer" << std::endl;
+		return false;
+	}
 	return true;
 }
 
@@ -97,7 +160,10 @@ void Pipeline::Release()
 	Base::immediateContext->Release();
 	Base::device->Release();
 
-	PixelShading::sampler->Release();
+	Samplers::samplerwrap->Release();
+	Samplers::samplerBorderBlack->Release();
+	Samplers::samplerBorderWhite->Release();
+	CSConfig::CSConfigBuffer->Release();
 }
 
 ID3D11Device* Pipeline::Device()
@@ -165,11 +231,6 @@ void Pipeline::IncrementCounter()
 UINT Pipeline::FrameCounter()
 {
 	return Base::frameCount;
-}
-
-void Pipeline::Deferred::GeometryPass::Clear::DepthStencilView(ID3D11DepthStencilView* dsv)
-{
-	Base::immediateContext->ClearDepthStencilView(dsv, D3D11_CLEAR_DEPTH | D3D11_CLEAR_STENCIL, 1, 0);
 }
 
 void Pipeline::Deferred::GeometryPass::Set::Viewport(D3D11_VIEWPORT& viewport)
@@ -268,27 +329,42 @@ void Pipeline::Deferred::LightPass::ComputeShader::Bind::ComputeShader(ID3D11Com
 
 void Pipeline::Deferred::LightPass::ComputeShader::Bind::CameraViewBuffer(ID3D11Buffer* cameraViewBuffer)
 {
-	Base::immediateContext->CSSetConstantBuffers(0, 1, &cameraViewBuffer);
+	Base::immediateContext->CSSetConstantBuffers(1, 1, &cameraViewBuffer);
 }
 
 void Pipeline::Deferred::LightPass::ComputeShader::Bind::CameraProjectionBuffer(ID3D11Buffer* cameraProjectionBuffer)
 {
-	Base::immediateContext->CSSetConstantBuffers(1, 1, &cameraProjectionBuffer);
+	Base::immediateContext->CSSetConstantBuffers(2, 1, &cameraProjectionBuffer);
 }
 
 void Pipeline::Deferred::LightPass::ComputeShader::Bind::CameraViewportBuffer(ID3D11Buffer* cameraViewportBuffer)
 {
-	Base::immediateContext->CSSetConstantBuffers(2, 1, &cameraViewportBuffer);
+	Base::immediateContext->CSSetConstantBuffers(3, 1, &cameraViewportBuffer);
 }
 
-void Pipeline::Deferred::LightPass::ComputeShader::Bind::LightParameterBuffer(ID3D11Buffer* parameterBuffer)
+void Pipeline::Deferred::LightPass::ComputeShader::Bind::AmbientLightParameterBuffer(ID3D11Buffer* parameterBuffer)
 {
-	Base::immediateContext->CSSetConstantBuffers(3, 1, &parameterBuffer);
+	Base::immediateContext->CSSetConstantBuffers(4, 1, &parameterBuffer);
+}
+
+void Pipeline::Deferred::LightPass::ComputeShader::Bind::PointLightParameterBuffer(ID3D11Buffer* parameterBuffer)
+{
+	Base::immediateContext->CSSetConstantBuffers(5, 1, &parameterBuffer);
+}
+
+void Pipeline::Deferred::LightPass::ComputeShader::Bind::DirectionalLightParameterBuffer(ID3D11Buffer* parameterBuffer)
+{
+	Base::immediateContext->CSSetConstantBuffers(6, 1, &parameterBuffer);
+}
+
+void Pipeline::Deferred::LightPass::ComputeShader::Bind::SpotLightParameterBuffer(ID3D11Buffer* parameterBuffer)
+{
+	Base::immediateContext->CSSetConstantBuffers(7, 1, &parameterBuffer);
 }
 
 void Pipeline::Deferred::LightPass::ComputeShader::Bind::ShadowmappingBuffer(ID3D11Buffer* shadowmappingBuffer)
 {
-	Base::immediateContext->CSSetConstantBuffers(4, 1, &shadowmappingBuffer);
+	Base::immediateContext->CSSetConstantBuffers(8, 1, &shadowmappingBuffer);
 }
 
 void Pipeline::Deferred::LightPass::ComputeShader::Bind::DepthBuffer(ID3D11ShaderResourceView* SRV)
@@ -316,9 +392,14 @@ void Pipeline::Deferred::LightPass::ComputeShader::Bind::SpecularBuffer(ID3D11Sh
 	Base::immediateContext->CSSetShaderResources(4, 1, &SRV);
 }
 
-void Pipeline::Deferred::LightPass::ComputeShader::Bind::ShadowMapResource(ID3D11ShaderResourceView* SRV)
+void Pipeline::Deferred::LightPass::ComputeShader::Bind::ShadowMap(ID3D11ShaderResourceView* SRV)
 {
 	Base::immediateContext->CSSetShaderResources(5, 1, &SRV);
+}
+
+void Pipeline::Deferred::LightPass::ComputeShader::Bind::ShadowCubeMap(ID3D11ShaderResourceView* SRV)
+{
+	Base::immediateContext->CSSetShaderResources(6, 1, &SRV);
 }
 
 void Pipeline::Deferred::LightPass::ComputeShader::Bind::BackBufferUAV(ID3D11UnorderedAccessView* UAV)
@@ -326,10 +407,12 @@ void Pipeline::Deferred::LightPass::ComputeShader::Bind::BackBufferUAV(ID3D11Uno
 	Base::immediateContext->CSSetUnorderedAccessViews(0, 1, &UAV, nullptr);
 }
 
-bool Pipeline::Deferred::LightPass::ComputeShader::Dispatch32X18(UINT width, UINT height, UINT topLeftX, UINT topLeftY)
+bool Pipeline::Deferred::LightPass::ComputeShader::Dispatch32X32(UINT width, UINT height, UINT topLeftX, UINT topLeftY)
 {
+	SharedResources::BindComputeShader(SharedResources::cShader::Standard32x32);
+
 	UINT computeWidth = 32;
-	UINT computeHeight = 18;
+	UINT computeHeight = 32;
 
 	UINT dispatchWidth = width / computeWidth;
 
@@ -353,8 +436,8 @@ bool Pipeline::Deferred::LightPass::ComputeShader::Dispatch32X18(UINT width, UIN
 
 void Pipeline::Deferred::LightPass::ComputeShader::Clear::ComputeSRVs()
 {
-	ID3D11ShaderResourceView* clear[5] = { nullptr, nullptr, nullptr, nullptr, nullptr };
-	Base::immediateContext->CSSetShaderResources(0, 5, clear);
+	ID3D11ShaderResourceView* clear[7] = { nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr};
+	Base::immediateContext->CSSetShaderResources(0, 7, clear);
 }
 
 void Pipeline::ResourceManipulation::MapBuffer(ID3D11Buffer* buffer, D3D11_MAPPED_SUBRESOURCE* mappedResource)
@@ -375,4 +458,109 @@ void Pipeline::ShadowMapping::ClearPixelShader()
 void Pipeline::ShadowMapping::BindDepthStencil(ID3D11DepthStencilView* dsv)
 {
 	Base::immediateContext->OMSetRenderTargets(0, nullptr, dsv);
+}
+
+void Pipeline::ShadowMapping::BindDistanceBuffer(ID3D11RenderTargetView* rtv, ID3D11DepthStencilView* dsv)
+{
+	SharedResources::BindPixelShader(SharedResources::pShader::DistanceWrite);
+	Base::immediateContext->OMSetRenderTargets(1, &rtv, dsv);
+}
+
+void Pipeline::ShadowMapping::UnbindDepthStencil()
+{
+	Base::immediateContext->OMSetRenderTargets(0, nullptr, nullptr);
+}
+
+void Pipeline::ShadowMapping::UnbindDistanceBuffer()
+{
+	Base::immediateContext->OMSetRenderTargets(0, nullptr, nullptr);
+}
+
+void Pipeline::ShadowMapping::BorderSampleBlack()
+{
+	Base::immediateContext->PSSetSamplers(1, 1, &Samplers::samplerBorderBlack);
+	Base::immediateContext->CSSetSamplers(1, 1, &Samplers::samplerBorderBlack);
+}
+
+void Pipeline::ShadowMapping::BorderSampleWhite()
+{
+	Base::immediateContext->PSSetSamplers(1, 1, &Samplers::samplerBorderWhite);
+	Base::immediateContext->CSSetSamplers(1, 1, &Samplers::samplerBorderWhite);
+}
+
+void Pipeline::Clean::RenderTargetView(ID3D11RenderTargetView* rtv)
+{
+	float clearColour[4] = { 0, 0, 0, 0 };
+	Base::immediateContext->ClearRenderTargetView(rtv, clearColour);
+}
+
+void Pipeline::Clean::DepthStencilView(ID3D11DepthStencilView* dsv)
+{
+	Base::immediateContext->ClearDepthStencilView(dsv, D3D11_CLEAR_DEPTH | D3D11_CLEAR_STENCIL, 1, 0);
+}
+
+void Pipeline::Deferred::LightPass::ComputeShader::Settings::LightType(int type)
+{
+	CSConfig::settings.lightType = type;
+}
+
+void Pipeline::Deferred::LightPass::ComputeShader::Settings::ShadowMapType(int type)
+{
+	CSConfig::settings.shadowMapType = type;
+}
+
+void Pipeline::Deferred::LightPass::ComputeShader::Settings::Shadowcaster(bool castsShadows)
+{
+	CSConfig::settings.shadowcaster = castsShadows;
+}
+
+void Pipeline::Deferred::LightPass::ComputeShader::Settings::BindBuffer()
+{
+	D3D11_MAPPED_SUBRESOURCE mappedResource;
+
+	Pipeline::ResourceManipulation::MapBuffer(CSConfig::CSConfigBuffer, &mappedResource);
+	memcpy(mappedResource.pData, &CSConfig::settings, sizeof(CSConfig::CSSettings));
+	Pipeline::ResourceManipulation::UnmapBuffer(CSConfig::CSConfigBuffer);
+
+	Base::immediateContext->CSSetConstantBuffers(0, 1, &CSConfig::CSConfigBuffer);
+}
+
+void Pipeline::Deferred::GeometryPass::HullShader::Bind::HullShader(ID3D11HullShader* hShader)
+{
+	Base::immediateContext->HSSetShader(hShader, nullptr, 0);
+}
+
+void Pipeline::Deferred::GeometryPass::HullShader::Bind::HSConfigBuffer(ID3D11Buffer* buffer)
+{
+	Base::immediateContext->HSSetConstantBuffers(0, 1, &buffer);
+}
+
+void Pipeline::Deferred::GeometryPass::HullShader::UnBind::HullShader()
+{
+	Base::immediateContext->HSSetShader(nullptr, nullptr, 0);
+}
+
+void Pipeline::Deferred::GeometryPass::DomainShader::Bind::DomainShader(ID3D11DomainShader* dShader)
+{
+	Base::immediateContext->DSSetShader(dShader, nullptr, 0);
+}
+
+void Pipeline::Deferred::GeometryPass::DomainShader::Bind::DSConfigBuffer(ID3D11Buffer* buffer)
+{
+	Base::immediateContext->DSSetConstantBuffers(0, 1, &buffer);
+}
+
+void Pipeline::Deferred::GeometryPass::DomainShader::Bind::viewBuffer(ID3D11Buffer* buffer)
+{
+	Base::immediateContext->DSSetConstantBuffers(1, 1, &buffer);
+}
+
+void Pipeline::Deferred::GeometryPass::DomainShader::Bind::ProjectionBuffer(ID3D11Buffer* buffer)
+{
+	Base::immediateContext->DSSetConstantBuffers(2, 1, &buffer);
+}
+
+void Pipeline::Deferred::GeometryPass::DomainShader::UnBind::DomainShader()
+{
+	Base::immediateContext->DSSetShader(nullptr, nullptr, 0);
 }

@@ -2,6 +2,7 @@
 # (assimp v3.1.202510665)
 
 newmtl head test
+Ns 2.0
 kd 0.8 0.8 0.8
 illum 1
 map_Kd textures/hugin_head_color.png
@@ -9,7 +10,7 @@ map_Ka textures/hugin_head_AO.png
 map_Ks textures/hugin_head_specular.png
 
 newmtl UV test
-Ns 50.0
+Ns 3.0
 kd 0.8 0.8 0.8
 illum 1
 map_Kd textures/Hugin_Color.png

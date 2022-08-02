@@ -3,9 +3,13 @@
 #include <vector>
 #include <array>
 #include <d3d11.h>
+#include <DirectXMath.h>
+#include <DirectXCollision.h>
 
 #include "BaseObject.h"
 #include "SharedResources.h"
+#include "QuadTree.h"
+#include "Renderer.h"
 
 struct Vertex {
 	float pos[3];
@@ -42,14 +46,74 @@ class STDOBJ : public Object
 		virtual void Render() override;
 		virtual void DepthRender() override;
 
+		virtual bool Contained(DirectX::BoundingFrustum& viewFrustum) override;
+		virtual void AddToQuadTree(QuadTree* tree) override;
 
-	private:
+	protected:
+		std::vector<Submesh> submeshes;
 		ID3D11Buffer* vertexBuffer;
 		ID3D11Buffer* indexBuffer;
-		
-		std::vector<Submesh> submeshes;
+
+	private:
+		DirectX::BoundingSphere boundingVolume;
 
 		bool LoadOBJ(std::string OBJFilepath);
 
 		bool LoadMTL(std::string MTLFilepath);
+};
+
+struct TesselationConfigBufferStruct
+{
+	float maxTesselation;
+	float maxDistance;
+	float minDistance;
+	float interpolationFactor;
+
+	TesselationConfigBufferStruct(float maxTesselation, float maxDistance, float minDistance, float interpolationFactor) :
+		maxTesselation(maxTesselation),
+		maxDistance(maxDistance),
+		minDistance(minDistance),
+		interpolationFactor(interpolationFactor)
+	{
+	}
+};
+
+class STDOBJTesselated : public STDOBJ
+{
+public:
+	STDOBJTesselated(const std::string OBJFilepath, float maxTesselation, float maxDistance, float minDistance, float interpolationFactor);
+	~STDOBJTesselated();
+
+	virtual void Render() override;
+	virtual void DepthRender() override;
+
+private:
+	ID3D11Buffer* tesselationConfigBuffer;
+};
+
+class STDOBJMirror : public STDOBJ
+{
+public:
+	STDOBJMirror(const std::string OBJFilepath, UINT resolution, Renderer* renderer, float nearPlane, float farPlane);
+	~STDOBJMirror();
+
+	virtual void Render() override;
+	virtual void DepthRender() override;
+
+	void ReflectionRender();
+
+private:
+	UINT resolution;
+
+	float nearPlane;
+	float farPlane;
+
+	Renderer* renderer;
+
+	ID3D11UnorderedAccessView* UAVs[6];
+	ID3D11Texture2D* textureCube;
+	ID3D11ShaderResourceView* SRV;
+
+	ID3D11Texture2D* depthStencilTexture;
+	ID3D11DepthStencilView* DSV;
 };

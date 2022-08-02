@@ -128,27 +128,34 @@ namespace SharedResources
 
 	enum vShader
 	{
-		Standard = 0
+		VSStandard = 0,
+		Tesselation = 1
 	};
 	void BindVertexShader(vShader ID);
 
 	enum pShader
 	{
 		TextureMaterial = 0,
-		ParameterMaterial = 1
+		ParameterMaterial = 1,
+		DistanceWrite = 2
 	};
 	void BindPixelShader(pShader ID);
 
 	enum cShader
 	{
-		PointLight = 0,
-		PointLightShadow = 1,
-
-		DirectionalLight = 2,
-		DirectionalLightShadow = 3,
-
-		SpotLight = 4,
-		SpotLightShadow = 5,
+		Standard32x32 = 0
 	};
 	void BindComputeShader(cShader ID);
+
+	enum hShader
+	{
+		HSStandard = 0
+	};
+	void BindHullShader(hShader ID);
+
+	enum dShader
+	{
+		DSStandard = 0
+	};
+	void BindDomainShader(dShader ID);
 }

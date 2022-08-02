@@ -37,6 +37,7 @@ Camera::~Camera()
 {
 	worldTransformBuffer->Release();
 	projectionBuffer->Release();
+	viewBuffer->Release();
 }
 
 void Camera::SetActiveCamera()
@@ -45,6 +46,7 @@ void Camera::SetActiveCamera()
 
 	UpdateTransformBuffer();
 	Pipeline::Deferred::GeometryPass::VertexShader::Bind::cameraViewBuffer(worldTransformBuffer);
+	Pipeline::Deferred::GeometryPass::DomainShader::Bind::viewBuffer(worldTransformBuffer);
 	Pipeline::Deferred::LightPass::ComputeShader::Bind::CameraViewBuffer(worldTransformBuffer);
 
 	if (projModified)
@@ -53,6 +55,7 @@ void Camera::SetActiveCamera()
 		projModified = false;
 	}
 	Pipeline::Deferred::GeometryPass::VertexShader::Bind::cameraProjectionBuffer(projectionBuffer);
+	Pipeline::Deferred::GeometryPass::DomainShader::Bind::ProjectionBuffer(projectionBuffer);
 	Pipeline::Deferred::LightPass::ComputeShader::Bind::CameraProjectionBuffer(projectionBuffer);
 
 	Pipeline::Deferred::LightPass::ComputeShader::Bind::CameraViewportBuffer(viewBuffer);
@@ -90,32 +93,39 @@ UINT Camera::ViewportTopLeftY()
 	return topLeftY;
 }
 
+void Camera::ViewFrustum(DirectX::BoundingFrustum& frustum)
+{
+	DirectX::XMMATRIX rotation = DirectX::XMMatrixRotationQuaternion(DirectX::XMLoadFloat4(&rotationQuaternion));
+
+	DirectX::XMMATRIX translation = DirectX::XMMatrixTranslation(position.x, position.y, position.z);
+
+	DirectX::XMMATRIX transform = rotation * translation;
+
+	viewFrustum.Transform(frustum, transform);
+}
+
 DirectX::XMFLOAT4X4 Camera::TransformMatrix()
 {
-	DirectX::XMMATRIX scaling = DirectX::XMMatrixScaling(1.0f, 1.0f, 1.0f);
-
-	DirectX::XMMATRIX rotation = DirectX::XMLoadFloat4x4(&rotationMatrix);
+	DirectX::XMMATRIX rotation = DirectX::XMMatrixRotationQuaternion(DirectX::XMLoadFloat4(&rotationQuaternion));
 
 	DirectX::XMMATRIX translation = DirectX::XMMatrixTranslation(position.x, position.y, position.z);
 
 	DirectX::XMFLOAT4X4 output;
 
-	DirectX::XMStoreFloat4x4(&output, DirectX::XMMatrixTranspose(scaling * rotation * translation));
+	DirectX::XMStoreFloat4x4(&output, DirectX::XMMatrixTranspose(rotation * translation));
 
 	return output;
 }
 
 DirectX::XMFLOAT4X4 Camera::InverseTransformMatrix()
 {
-	DirectX::XMMATRIX invScaling = DirectX::XMMatrixScaling(1.0f, 1.0f, 1.0f);
-
-	DirectX::XMMATRIX invRotation = DirectX::XMMatrixTranspose(DirectX::XMLoadFloat4x4(&rotationMatrix));
+	DirectX::XMMATRIX invRotation = DirectX::XMMatrixTranspose(DirectX::XMMatrixRotationQuaternion(DirectX::XMLoadFloat4(&rotationQuaternion)));
 
 	DirectX::XMMATRIX invTranslation = DirectX::XMMatrixTranslation(-position.x, -position.y, -position.z);
 
 	DirectX::XMFLOAT4X4 output;
 
-	DirectX::XMStoreFloat4x4(&output, DirectX::XMMatrixTranspose(invScaling * invRotation * invTranslation));
+	DirectX::XMStoreFloat4x4(&output, DirectX::XMMatrixTranspose(invTranslation * invRotation));
 
 	return output;
 }
@@ -182,6 +192,8 @@ void CameraPerspective::UpdateProjection()
 
 	PerspectiveBuffer bufferStruct = PerspectiveBuffer(FovAngleY, aspectRatio, ViewportWidth(), ViewportHeight(), NearZ, FarZ);
 
+	viewFrustum = DirectX::BoundingFrustum(DirectX::XMMatrixPerspectiveFovLH(FovAngleY * OBJECT_ROTATION_UNIT_DEGREES, aspectRatio, NearZ, FarZ));
+
 	Pipeline::ResourceManipulation::MapBuffer(projectionBuffer, &mappedResource);
 	memcpy(mappedResource.pData, &bufferStruct, sizeof(bufferStruct));
 	Pipeline::ResourceManipulation::UnmapBuffer(projectionBuffer);
@@ -192,6 +204,8 @@ bool CameraPerspective::CreateBuffers()
 	D3D11_BUFFER_DESC bufferDesc;
 	
 	PerspectiveBuffer bufferStruct = PerspectiveBuffer(FovAngleY, aspectRatio, ViewportWidth(), ViewportHeight(), NearZ, FarZ);
+
+	viewFrustum = DirectX::BoundingFrustum(DirectX::XMMatrixPerspectiveFovLH(FovAngleY * OBJECT_ROTATION_UNIT_DEGREES, aspectRatio, NearZ, FarZ));
 
 	bufferDesc.ByteWidth = sizeof(bufferStruct);
 	bufferDesc.Usage = D3D11_USAGE_DYNAMIC;
@@ -244,6 +258,8 @@ void CameraOrthographic::UpdateProjection()
 
 	OrthographicBuffer bufferStruct = OrthographicBuffer(WidthScale, HeightScale, ViewportWidth(), ViewportHeight(), NearZ, FarZ);
 
+	viewFrustum = DirectX::BoundingFrustum(DirectX::XMMatrixOrthographicLH(WidthScale, HeightScale, NearZ, FarZ));
+
 	Pipeline::ResourceManipulation::MapBuffer(projectionBuffer, &mappedResource);
 	memcpy(mappedResource.pData, &bufferStruct, sizeof(bufferStruct));
 	Pipeline::ResourceManipulation::UnmapBuffer(projectionBuffer);
@@ -254,6 +270,8 @@ bool CameraOrthographic::CreateBuffers()
 	D3D11_BUFFER_DESC bufferDesc;
 
 	OrthographicBuffer bufferStruct = OrthographicBuffer(WidthScale, HeightScale, ViewportWidth(), ViewportHeight(), NearZ, FarZ);
+
+	viewFrustum = DirectX::BoundingFrustum(DirectX::XMMatrixOrthographicLH(WidthScale, HeightScale, NearZ, FarZ));
 
 	bufferDesc.ByteWidth = sizeof(bufferStruct);
 	bufferDesc.Usage = D3D11_USAGE_DYNAMIC;

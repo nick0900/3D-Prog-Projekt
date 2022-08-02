@@ -28,11 +28,6 @@ namespace Pipeline
 				void Viewport(D3D11_VIEWPORT& viewport);
 			}
 
-			namespace Clear
-			{
-				void DepthStencilView(ID3D11DepthStencilView* dsv);
-			}
-
 			namespace VertexShader
 			{
 				namespace Bind
@@ -71,6 +66,36 @@ namespace Pipeline
 					void GBuffers();
 				}
 			}
+
+			namespace HullShader
+			{
+				namespace Bind
+				{
+					void HullShader(ID3D11HullShader* hShader);
+					void HSConfigBuffer(ID3D11Buffer* buffer);
+				}
+
+				namespace UnBind
+				{
+					void HullShader();
+				}
+			}
+
+			namespace DomainShader
+			{
+				namespace Bind
+				{
+					void DomainShader(ID3D11DomainShader* dShader);
+					void DSConfigBuffer(ID3D11Buffer* buffer);
+					void viewBuffer(ID3D11Buffer* buffer);
+					void ProjectionBuffer(ID3D11Buffer* buffer);
+				}
+
+				namespace UnBind
+				{
+					void DomainShader();
+				}
+			}
 		}
 
 		namespace LightPass
@@ -84,7 +109,10 @@ namespace Pipeline
 					void CameraViewBuffer(ID3D11Buffer* cameraViewBuffer);
 					void CameraProjectionBuffer(ID3D11Buffer* cameraProjectionBuffer);
 					void CameraViewportBuffer(ID3D11Buffer* cameraViewportBuffer);
-					void LightParameterBuffer(ID3D11Buffer* parameterBuffer);
+					void AmbientLightParameterBuffer(ID3D11Buffer* parameterBuffer);
+					void PointLightParameterBuffer(ID3D11Buffer* parameterBuffer);
+					void DirectionalLightParameterBuffer(ID3D11Buffer* parameterBuffer);
+					void SpotLightParameterBuffer(ID3D11Buffer* parameterBuffer);
 					void ShadowmappingBuffer(ID3D11Buffer* shadowmappingBuffer);
 
 
@@ -93,7 +121,8 @@ namespace Pipeline
 					void AmbientBuffer(ID3D11ShaderResourceView* SRV);
 					void DiffuesBuffer(ID3D11ShaderResourceView* SRV);
 					void SpecularBuffer(ID3D11ShaderResourceView* SRV);
-					void ShadowMapResource(ID3D11ShaderResourceView* SRV);
+					void ShadowMap(ID3D11ShaderResourceView* SRV);
+					void ShadowCubeMap(ID3D11ShaderResourceView* SRV);
 
 					void BackBufferUAV(ID3D11UnorderedAccessView* UAV);
 				}
@@ -103,7 +132,16 @@ namespace Pipeline
 					void ComputeSRVs();
 				}
 				
-				bool Dispatch32X18(UINT width, UINT height, UINT topLeftX, UINT topLeftY);
+				bool Dispatch32X32(UINT width, UINT height, UINT topLeftX, UINT topLeftY);
+
+				namespace Settings
+				{
+					void LightType(int type);
+					void ShadowMapType(int type);
+					void Shadowcaster(bool castsShadows);
+
+					void BindBuffer();
+				}
 			}
 		}
 	}
@@ -113,11 +151,23 @@ namespace Pipeline
 		void ClearPixelShader();
 
 		void BindDepthStencil(ID3D11DepthStencilView* dsv);
+		void BindDistanceBuffer(ID3D11RenderTargetView* rtv, ID3D11DepthStencilView* dsv);
+		void UnbindDepthStencil();
+		void UnbindDistanceBuffer();
+
+		void BorderSampleBlack();
+		void BorderSampleWhite();
 	}
 
 	namespace ProjectionMapping
 	{
 
+	}
+
+	namespace Clean
+	{
+		void RenderTargetView(ID3D11RenderTargetView* rtv);
+		void DepthStencilView(ID3D11DepthStencilView* dsv);
 	}
 
 	namespace ResourceManipulation

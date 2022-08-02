@@ -1,8 +1,9 @@
 struct PixelShaderInput
 {
-	float4 position : SV_POSITION;
-	float3 normal : normal;
-	float2 uv : uv;
+    float4 position : SV_POSITION;
+    float3 normal : normal;
+    float2 uv : uv;
+    float distance : dist;
 };
 
 struct PixelShaderOutput

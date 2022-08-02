@@ -10,6 +10,7 @@ struct VertexShaderOutput
 	float4 position : SV_POSITION;
 	float3 normal : normal;
 	float2 uv : uv;
+    float distance : dist;
 };
 
 cbuffer CameraTransform : register(b0)
@@ -41,8 +42,10 @@ VertexShaderOutput main(VertexShaderInput input)
 	output.position = mul(float4(input.position, 1.0f), objectWorldTransform);
 
 	output.position = mul(output.position, inverseCameraTransform);
+    output.distance = length(output.position);
 	output.position = mul(output.position, projectionMatrix);
 	output.normal = mul(float4(input.normal, 0.0f), transpose(inverseObjectWorldTransform));
+    output.normal = normalize(output.normal);
 	output.uv = input.uv;
 
 	return output;

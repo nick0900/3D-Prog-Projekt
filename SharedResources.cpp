@@ -13,6 +13,8 @@ namespace Static
 		static std::vector<VShader*> Vertex;
 		static std::vector<PShader*> Pixel;
 		static std::vector<CShader*> Compute;
+		static std::vector<HShader*> Hull;
+		static std::vector<DShader*> Domain;
 	}
 
 	static Materials* materials = nullptr;
@@ -146,10 +148,6 @@ int Textures::AddTexture(const std::string& texturePath)
 		textureDesc.Format = DXGI_FORMAT_R8G8_UNORM;
 		break;
 
-	case 3:
-		textureDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
-		break;
-
 	case 4:
 		textureDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
 		break;
@@ -275,18 +273,19 @@ void SharedResources::Setup()
 {
 	Static::Shaders::Vertex.push_back(new VShader("VSMeshGeometryPass.cso"));
 
+	Static::Shaders::Vertex.push_back(new VShader("VSMeshGeometryPassTesselated.cso"));
+
+	Static::Shaders::Hull.push_back(new HShader("HSMeshGeometryPass.cso"));
+
+	Static::Shaders::Domain.push_back(new DShader("DSMeshGeometryPass.cso"));
+
 	Static::Shaders::Pixel.push_back(new PShader("PSTexturedGeometryPass.cso"));
 
 	Static::Shaders::Pixel.push_back(new PShader("PSParameterGeometryPass.cso"));
 
-	Static::Shaders::Compute.push_back(new CShader("CSPointLight.cso"));
-	Static::Shaders::Compute.push_back(new CShader("CSPointLightShadow.cso"));
+	Static::Shaders::Pixel.push_back(new PShader("PSDistanceWrite.cso"));
 
-	Static::Shaders::Compute.push_back(new CShader("CSDirectionalLight.cso"));
-	Static::Shaders::Compute.push_back(new CShader("CSDirectionalLightShadow.cso"));
-
-	Static::Shaders::Compute.push_back(new CShader("CSSpotLight.cso"));
-	Static::Shaders::Compute.push_back(new CShader("CSSpotLightShadow.cso"));
+	Static::Shaders::Compute.push_back(new CShader("CSLightPass32x32.cso"));
 
 	Static::materials = new Materials();
 	Static::textures = new Textures();
@@ -303,6 +302,14 @@ void SharedResources::Release()
 		delete shader;
 	}
 	for (CShader* shader : Static::Shaders::Compute)
+	{
+		delete shader;
+	}
+	for (HShader* shader : Static::Shaders::Hull)
+	{
+		delete shader;
+	}
+	for (DShader* shader : Static::Shaders::Domain)
 	{
 		delete shader;
 	}
@@ -344,4 +351,14 @@ void SharedResources::BindPixelShader(pShader ID)
 void SharedResources::BindComputeShader(cShader ID)
 {
 	Static::Shaders::Compute[ID]->Bind();
+}
+
+void SharedResources::BindHullShader(hShader ID)
+{
+	Static::Shaders::Hull[ID]->Bind();
+}
+
+void SharedResources::BindDomainShader(dShader ID)
+{
+	Static::Shaders::Domain[ID]->Bind();
 }

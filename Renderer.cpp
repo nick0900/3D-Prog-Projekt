@@ -1,5 +1,6 @@
 #include <Windows.h>
 #include <iostream>
+#include <DirectXCollision.h>
 
 #include "Renderer.h"
 
@@ -10,7 +11,7 @@
 
 
 
-Renderer::Renderer(std::vector<Object*>* sceneObjects, std::vector<Camera*>* renderCameras, std::vector<LightBase*>* sceneLights) :
+Renderer::Renderer(std::vector<Object*>* dynamicObjects, QuadTree* staticObjects, std::vector<Camera*>* renderCameras, std::vector<LightBase*>* sceneLights) :
 	backBufferRTV(nullptr), 
 	backBufferUAV(nullptr), 
 	dsTexture(nullptr), 
@@ -33,7 +34,8 @@ Renderer::Renderer(std::vector<Object*>* sceneObjects, std::vector<Camera*>* ren
 	specularSRV(nullptr),
 
 	renderCameras(renderCameras),
-	sceneObjects(sceneObjects),
+	dynamicObjects(dynamicObjects),
+	staticObjects(staticObjects),
 	sceneLights(sceneLights)
 {
 	CreateBackBufferViews();
@@ -86,12 +88,53 @@ void Renderer::CameraDepthRender(ID3D11DepthStencilView* dsv, Camera* view)
 
 	view->SetActiveCamera();
 
+	Pipeline::Clean::DepthStencilView(dsv);
 	Pipeline::ShadowMapping::BindDepthStencil(dsv);
 
-	for (Object* object : *sceneObjects)
+	for (Object* object : *dynamicObjects)
 	{
 		object->DepthRender();
 	}
+
+	DirectX::BoundingFrustum viewFrustum;
+	view->ViewFrustum(viewFrustum);
+	std::vector<Object*> containedStaticObjects;
+	staticObjects->GetContainedInFrustum(&viewFrustum, containedStaticObjects);
+	for (Object* object : containedStaticObjects)
+	{
+		object->DepthRender();
+	}
+
+	Pipeline::ShadowMapping::UnbindDepthStencil();
+}
+
+void Renderer::CameraDistanceRender(ID3D11RenderTargetView* rtv, ID3D11DepthStencilView* dsv, Camera* view)
+{
+	view->SetActiveCamera();
+
+	Pipeline::Clean::DepthStencilView(dsv);
+	Pipeline::ShadowMapping::BindDistanceBuffer(rtv, dsv);
+
+	for (Object* object : *dynamicObjects)
+	{
+		object->DepthRender();
+	}
+
+	DirectX::BoundingFrustum viewFrustum;
+	view->ViewFrustum(viewFrustum);
+	std::vector<Object*> containedStaticObjects;
+	staticObjects->GetContainedInFrustum(&viewFrustum, containedStaticObjects);
+	for (Object* object : containedStaticObjects)
+	{
+		object->DepthRender();
+	}
+
+	Pipeline::ShadowMapping::UnbindDistanceBuffer();
+}
+
+void Renderer::AttachNewQuadtree(QuadTree* staticObjects)
+{
+	this->staticObjects = staticObjects;
 }
 
 bool Renderer::DeferredSetup()
@@ -187,15 +230,33 @@ void Renderer::CameraDeferredRender(Camera* renderView)
 {
 	renderView->SetActiveCamera();
 
-	Pipeline::Deferred::GeometryPass::Clear::DepthStencilView(dsView);
+	Pipeline::Clean::DepthStencilView(dsView);
+	Pipeline::Clean::RenderTargetView(normalRTV);
+	Pipeline::Clean::RenderTargetView(ambientRTV);
+	Pipeline::Clean::RenderTargetView(diffuseRTV);
+	Pipeline::Clean::RenderTargetView(specularRTV);
+
 	Pipeline::Deferred::GeometryPass::PixelShader::Bind::GBuffers(normalRTV, ambientRTV, diffuseRTV, specularRTV, dsView);
 
-	for (Object* object : *sceneObjects)
+	for (Object* object : *dynamicObjects)
+	{
+		object->Render();
+	}
+
+	DirectX::BoundingFrustum viewFrustum;
+	renderView->ViewFrustum(viewFrustum);
+	std::vector<Object*> containedStaticObjects;
+	staticObjects->GetContainedInFrustum(&viewFrustum, containedStaticObjects);
+	for (Object* object : containedStaticObjects)
 	{
 		object->Render();
 	}
 
 	Pipeline::Deferred::GeometryPass::PixelShader::Clear::GBuffers();
+
+	Pipeline::Clean::RenderTargetView(backBufferRTV);
+
+	Pipeline::Deferred::LightPass::ComputeShader::Bind::BackBufferUAV(backBufferUAV);
 
 	Pipeline::Deferred::LightPass::ComputeShader::Bind::DepthBuffer(depthSRV);
 	Pipeline::Deferred::LightPass::ComputeShader::Bind::NormalBuffer(normalSRV);
@@ -203,12 +264,12 @@ void Renderer::CameraDeferredRender(Camera* renderView)
 	Pipeline::Deferred::LightPass::ComputeShader::Bind::DiffuesBuffer(diffuseSRV);
 	Pipeline::Deferred::LightPass::ComputeShader::Bind::SpecularBuffer(specularSRV);
 
-	Pipeline::Deferred::LightPass::ComputeShader::Bind::BackBufferUAV(backBufferUAV);
-
 	for (LightBase* light : *sceneLights)
 	{
 		light->Bind();
-		Pipeline::Deferred::LightPass::ComputeShader::Dispatch32X18(renderView->ViewportWidth(), renderView->ViewportHeight(), renderView->ViewportTopLeftX(), renderView->ViewportTopLeftY());
+		renderView->SetActiveCamera();
+		Pipeline::Deferred::LightPass::ComputeShader::Settings::BindBuffer();
+		Pipeline::Deferred::LightPass::ComputeShader::Dispatch32X32(renderView->ViewportWidth(), renderView->ViewportHeight(), renderView->ViewportTopLeftX(), renderView->ViewportTopLeftY());
 	}
 
 	Pipeline::Deferred::LightPass::ComputeShader::Clear::ComputeSRVs();

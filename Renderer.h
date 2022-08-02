@@ -4,16 +4,18 @@
 #include <d3d11.h>
 #include <DirectXMath.h>
 #include <vector>
+#include <array>
 
 #include "Pipeline.h"
 #include "BaseObject.h"
 #include "Camera.h"
 #include "Lights.h"
+#include "QuadTree.h"
 
 class Renderer
 {
 	public:
-		Renderer(std::vector<Object*>* sceneObjects, std::vector<Camera*>* renderCameras, std::vector<LightBase*>* sceneLights);
+		Renderer(std::vector<Object*>* dynamicObjects, QuadTree* staticObjects, std::vector<Camera*>* renderCameras, std::vector<LightBase*>* sceneLights);
 		~Renderer();
 
 		void Render();
@@ -21,10 +23,13 @@ class Renderer
 		void Switch();
 
 		void CameraDepthRender(ID3D11DepthStencilView* dsv, Camera* view);
+		void CameraDistanceRender(ID3D11RenderTargetView* rtv, ID3D11DepthStencilView* dsv, Camera* view);
+		void CameraDeferredRender(Camera* renderView);
+
+		void AttachNewQuadtree(QuadTree* staticObjects);
 
 	private:
 		bool DeferredSetup();
-		void CameraDeferredRender(Camera* renderView);
 
 		void ReflectionUpdate();
 
@@ -37,7 +42,7 @@ class Renderer
 		ID3D11ShaderResourceView* depthSRV;
 
 		//Position is reconstructed from depthstencil
-		//first buffer contain normals in first three elements and the shinynessfactor as the fourth. shinyness needs to be reinterpered as int for use
+		//first buffer contain normals in first three elements and the shinynessfactor as the fourth.
 		//last three buffers contain ambient, diffuse and specular values respectively in the first trhee elements. each buffer contain one part of the color in their fourth element.
 		ID3D11Texture2D* gBufferNormal;
 		ID3D11Texture2D* gBufferAmbient;
@@ -54,12 +59,11 @@ class Renderer
 		ID3D11ShaderResourceView* diffuseSRV;
 		ID3D11ShaderResourceView* specularSRV;
 
-		//Camera shadowMapView;
-		//Camera environmentMapView;
-
 		std::vector<Camera*>* renderCameras;
 
 		std::vector<LightBase*>* sceneLights;
 
-		std::vector<Object*>* sceneObjects;
+		std::vector<Object*>* dynamicObjects;
+
+		QuadTree* staticObjects;
 };

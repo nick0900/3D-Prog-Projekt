@@ -38,3 +38,27 @@ public:
 private:
 	ID3D11ComputeShader* cShader;
 };
+
+class HShader
+{
+public:
+	HShader(const std::string shaderPath);
+	~HShader();
+
+	void Bind();
+
+private:
+	ID3D11HullShader* hShader;
+};
+
+class DShader
+{
+public:
+	DShader(const std::string shaderPath);
+	~DShader();
+
+	void Bind();
+
+private:
+	ID3D11DomainShader* dShader;
+};
