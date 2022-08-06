@@ -121,7 +121,8 @@ struct SpotLightBuffer
 	}
 };
 
-class Renderer;
+class DepthRenderer;
+class OmniDistanceRenderer;
 class Shadowmap;
 
 class LightBase : public Object
@@ -198,7 +199,7 @@ public:
 
 	void SetFalloff(float falloff);
 
-	void CreateShadowMap(UINT resolution, float nearPlane, float farPlane, Renderer* renderer);
+	void CreateShadowMap(UINT resolution, float nearPlane, float farPlane, OmniDistanceRenderer* renderer);
 	virtual Camera* ShadowMapCamera() override;
 
 	virtual void Render() override;
@@ -226,7 +227,7 @@ class DirectionalLight : public LightBase
 public:
 	DirectionalLight(const std::array<float, 3>& diffuse, const std::array<float, 3>& specular);
 
-	void CreateShadowMap(UINT resolution, float viewWidth, float nearPlane, float farPlane, Renderer* renderer);
+	void CreateShadowMap(UINT resolution, float viewWidth, float nearPlane, float farPlane, DepthRenderer* renderer);
 	virtual Camera* ShadowMapCamera() override;
 
 	virtual void Render() override;
@@ -256,7 +257,7 @@ public:
 	void SetFOV(float lightFOV);
 	void SetFalloff(float falloff);
 
-	void CreateShadowMap(UINT resolution, float nearPlane, float farPlane, Renderer* renderer);
+	void CreateShadowMap(UINT resolution, float nearPlane, float farPlane, DepthRenderer* renderer);
 	virtual Camera* ShadowMapCamera() override;
 
 	virtual void Render() override;
@@ -283,7 +284,7 @@ private:
 class Shadowmap
 {
 public:
-	Shadowmap(UINT resolution, LightBase* linkedLight, Renderer* renderer);
+	Shadowmap(UINT resolution, LightBase* linkedLight);
 	virtual ~Shadowmap();
 
 	void Bind();
@@ -295,7 +296,6 @@ public:
 protected:
 	virtual void BindMap() = 0;
 	virtual void MapRender() = 0;
-	Renderer* renderer;
 
 	ID3D11Texture2D* mapTexture;
 	ID3D11Buffer* shadowMappingBuffer;
@@ -314,7 +314,7 @@ private:
 class ShadowMapSingle : public Shadowmap
 {
 public:
-	ShadowMapSingle(UINT resolution, LightBase* linkedLight, Renderer* renderer);
+	ShadowMapSingle(UINT resolution, LightBase* linkedLight, DepthRenderer* renderer);
 	virtual ~ShadowMapSingle();
 
 protected:
@@ -322,13 +322,14 @@ protected:
 	virtual void MapRender() override;
 
 private:
+	DepthRenderer* renderer;
 	ID3D11DepthStencilView* mapDSV;
 };
 
 class ShadowMapCube : public Shadowmap
 {
 public:
-	ShadowMapCube(UINT resolution, LightBase* linkedLight, Renderer* renderer);
+	ShadowMapCube(UINT resolution, LightBase* linkedLight, OmniDistanceRenderer* renderer);
 	virtual ~ShadowMapCube();
 
 protected:
@@ -336,7 +337,6 @@ protected:
 	virtual void MapRender() override;
 
 private:
+	OmniDistanceRenderer* renderer;
 	ID3D11RenderTargetView* mapRTV[6];
-	ID3D11Texture2D* depthStencilTexture;
-	ID3D11DepthStencilView* DSV;
 };

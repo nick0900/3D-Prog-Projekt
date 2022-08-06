@@ -116,10 +116,11 @@ void main( uint3 pixelCoords : SV_DispatchThreadID )
         return;
     }
     
+    float3 diffuseAlbedo = diffuse_color.Load(pixelCoords).rgb;
+    
     if (lightType == 0) //AmbientLight
     {
-        float3 surfaceColor = float3(ambient_color.Load(pixelCoords).w, diffuse_color.Load(pixelCoords).w, specular_color.Load(pixelCoords).w);
-        backBuffer[uint2(topLeftX + pixelCoords.x, topLeftY + pixelCoords.y)] += float4(surfaceColor * ambientAlbedo * ambient_color.Load(pixelCoords).rgb, 1.0f);
+        backBuffer[uint2(topLeftX + pixelCoords.x, topLeftY + pixelCoords.y)] += float4(diffuseAlbedo * ambientAlbedo * ambient_color.Load(pixelCoords).rgb, 1.0f);
         return;
     }
     
@@ -141,7 +142,6 @@ void main( uint3 pixelCoords : SV_DispatchThreadID )
     float3 normal = normal_shinyness.Load(pixelCoords).xyz;
     float shinyness = normal_shinyness.Load(pixelCoords).w;
     
-    float3 diffuseAlbedo = diffuse_color.Load(pixelCoords).rgb;
     float3 specularAlbedo = specular_color.Load(pixelCoords).rgb;
     
     float3 lightPath;

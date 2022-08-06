@@ -172,7 +172,7 @@ void PointLight::SetFalloff(float falloff)
 	flagParameterChange();
 }
 
-void PointLight::CreateShadowMap(UINT resolution, float nearPlane, float farPlane, Renderer* renderer)
+void PointLight::CreateShadowMap(UINT resolution, float nearPlane, float farPlane, OmniDistanceRenderer* renderer)
 {
 	DeleteShadowMap();
 	shadowmap = new ShadowMapCube(resolution, this, renderer);
@@ -297,7 +297,7 @@ Camera* DirectionalLight::ShadowMapCamera()
 	return outputCamera;
 }
 
-void DirectionalLight::CreateShadowMap(UINT resolution, float viewWidth, float nearPlane, float farPlane, Renderer* renderer)
+void DirectionalLight::CreateShadowMap(UINT resolution, float viewWidth, float nearPlane, float farPlane, DepthRenderer* renderer)
 {
 	DeleteShadowMap();
 	shadowmap = new ShadowMapSingle(resolution, this, renderer);
@@ -442,7 +442,7 @@ void SpotLight::SetFalloff(float falloff)
 	flagParameterChange();
 }
 
-void SpotLight::CreateShadowMap(UINT resolution, float nearPlane, float farPlane, Renderer* renderer)
+void SpotLight::CreateShadowMap(UINT resolution, float nearPlane, float farPlane, DepthRenderer* renderer)
 {
 	DeleteShadowMap();
 	shadowmap = new ShadowMapSingle(resolution, this, renderer);
@@ -475,7 +475,7 @@ void SpotLight::BindBuffer()
 }
 
 
-Shadowmap::Shadowmap(UINT resolution, LightBase* linkedLight, Renderer* renderer) : resolution(resolution), linkedLight(linkedLight), renderer(renderer), mapSRV(nullptr), mapTexture(nullptr), shadowMappingBuffer(nullptr)
+Shadowmap::Shadowmap(UINT resolution, LightBase* linkedLight) : resolution(resolution), linkedLight(linkedLight), mapSRV(nullptr), mapTexture(nullptr), shadowMappingBuffer(nullptr)
 {
 	latestRender = 0;
 	mappingTransformed = true;
@@ -526,7 +526,7 @@ int Shadowmap::Resolution()
 	return resolution;
 }
 
-ShadowMapSingle::ShadowMapSingle(UINT resolution, LightBase* linkedLight, Renderer* renderer) : Shadowmap(resolution, linkedLight, renderer)
+ShadowMapSingle::ShadowMapSingle(UINT resolution, LightBase* linkedLight, DepthRenderer* renderer) : Shadowmap(resolution, linkedLight), renderer(renderer)
 {
 	D3D11_BUFFER_DESC bufferDesc;
 
@@ -608,7 +608,7 @@ void ShadowMapSingle::BindMap()
 
 
 
-ShadowMapCube::ShadowMapCube(UINT resolution, LightBase* linkedLight, Renderer* renderer) : Shadowmap(resolution, linkedLight, renderer)
+ShadowMapCube::ShadowMapCube(UINT resolution, LightBase* linkedLight, OmniDistanceRenderer* renderer) : Shadowmap(resolution, linkedLight), renderer(renderer)
 {
 	D3D11_BUFFER_DESC bufferDesc;
 
@@ -672,36 +672,6 @@ ShadowMapCube::ShadowMapCube(UINT resolution, LightBase* linkedLight, Renderer* 
 			std::cerr << "Error: Failed to set up shadowmap RTVs" << std::endl;
 		}
 	}
-
-	textureDesc.MipLevels = 1;
-	textureDesc.ArraySize = 1;
-	textureDesc.Format = DXGI_FORMAT_R24G8_TYPELESS;
-	textureDesc.SampleDesc.Count = 1;
-	textureDesc.SampleDesc.Quality = 0;
-	textureDesc.Usage = D3D11_USAGE_DEFAULT;
-	textureDesc.BindFlags = D3D11_BIND_DEPTH_STENCIL | D3D11_BIND_SHADER_RESOURCE;
-	textureDesc.CPUAccessFlags = 0;
-	textureDesc.MiscFlags = 0;
-	textureDesc.Width = resolution;
-	textureDesc.Height = resolution;
-
-	if (FAILED(Pipeline::Device()->CreateTexture2D(&textureDesc, nullptr, &depthStencilTexture)))
-	{
-		std::cerr << "Failed to set up depth stencil texture" << std::endl;
-	}
-
-	D3D11_DEPTH_STENCIL_VIEW_DESC dsvDesc;
-	dsvDesc.Format = DXGI_FORMAT_D24_UNORM_S8_UINT;
-	dsvDesc.ViewDimension = D3D11_DSV_DIMENSION_TEXTURE2D;
-	dsvDesc.Flags = 0;
-	D3D11_TEX2D_DSV texDSV;
-	texDSV.MipSlice = 0;
-	dsvDesc.Texture2D = texDSV;
-
-	if (FAILED(Pipeline::Device()->CreateDepthStencilView(depthStencilTexture, &dsvDesc, &DSV)))
-	{
-		std::cerr << "Error: Failed to set up DSV" << std::endl;
-	}
 }
 
 ShadowMapCube::~ShadowMapCube()
@@ -710,43 +680,13 @@ ShadowMapCube::~ShadowMapCube()
 	{
 		mapRTV[i]->Release();
 	}
-	depthStencilTexture->Release();
-	DSV->Release();
 }
 
 void ShadowMapCube::MapRender()
 {
 	Camera* view = linkedLight->ShadowMapCamera();
 
-	view->Rotate({ 0.0f, 90.0f, 0.0f }, OBJECT_TRANSFORM_SPACE_GLOBAL, OBJECT_TRANSFORM_REPLACE, OBJECT_ROTATION_UNIT_DEGREES);
-	view->UpdateTransformBuffer();
-
-	renderer->CameraDistanceRender(mapRTV[0], DSV, view);
-
-	view->Rotate({ 0.0f, -90.0f, 0.0f }, OBJECT_TRANSFORM_SPACE_GLOBAL, OBJECT_TRANSFORM_REPLACE, OBJECT_ROTATION_UNIT_DEGREES);
-	view->UpdateTransformBuffer();
-
-	renderer->CameraDistanceRender(mapRTV[1], DSV, view);
-
-	view->Rotate({ -90.0f, 0.0f, 0.0f }, OBJECT_TRANSFORM_SPACE_GLOBAL, OBJECT_TRANSFORM_REPLACE, OBJECT_ROTATION_UNIT_DEGREES);
-	view->UpdateTransformBuffer();
-
-	renderer->CameraDistanceRender(mapRTV[2], DSV, view);
-
-	view->Rotate({ 90.0f, 0.0f, 0.0f }, OBJECT_TRANSFORM_SPACE_GLOBAL, OBJECT_TRANSFORM_REPLACE, OBJECT_ROTATION_UNIT_DEGREES);
-	view->UpdateTransformBuffer();
-
-	renderer->CameraDistanceRender(mapRTV[3], DSV, view);
-
-	view->Rotate({ 0.0f, 0.0f, 0.0f }, OBJECT_TRANSFORM_SPACE_GLOBAL, OBJECT_TRANSFORM_REPLACE, OBJECT_ROTATION_UNIT_DEGREES);
-	view->UpdateTransformBuffer();
-
-	renderer->CameraDistanceRender(mapRTV[4], DSV, view);
-
-	view->Rotate({ 0.0f, 180.0f, 0.0f }, OBJECT_TRANSFORM_SPACE_GLOBAL, OBJECT_TRANSFORM_REPLACE, OBJECT_ROTATION_UNIT_DEGREES);
-	view->UpdateTransformBuffer();
-
-	renderer->CameraDistanceRender(mapRTV[5], DSV, view);
+	renderer->OmniDistanceRender(mapRTV, view);
 
 	delete view;
 }

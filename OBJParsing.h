@@ -9,7 +9,6 @@
 #include "BaseObject.h"
 #include "SharedResources.h"
 #include "QuadTree.h"
-#include "Renderer.h"
 
 struct Vertex {
 	float pos[3];
@@ -91,14 +90,15 @@ private:
 	ID3D11Buffer* tesselationConfigBuffer;
 };
 
+class DeferredRenderer;
+
 class STDOBJMirror : public STDOBJ
 {
 public:
-	STDOBJMirror(const std::string OBJFilepath, UINT resolution, Renderer* renderer, float nearPlane, float farPlane);
+	STDOBJMirror(const std::string OBJFilepath, UINT resolution, DeferredRenderer* renderer, float nearPlane, float farPlane);
 	~STDOBJMirror();
 
 	virtual void Render() override;
-	virtual void DepthRender() override;
 
 	void ReflectionRender();
 
@@ -108,12 +108,11 @@ private:
 	float nearPlane;
 	float farPlane;
 
-	Renderer* renderer;
+	DeferredRenderer* renderer;
 
 	ID3D11UnorderedAccessView* UAVs[6];
 	ID3D11Texture2D* textureCube;
 	ID3D11ShaderResourceView* SRV;
 
-	ID3D11Texture2D* depthStencilTexture;
-	ID3D11DepthStencilView* DSV;
+	bool blockRender;
 };

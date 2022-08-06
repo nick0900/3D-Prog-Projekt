@@ -32,11 +32,13 @@ PixelShaderOutput main(PixelShaderInput input)
 	
 	output.normal3_shinyness1 = float4(input.normal, shininessConstant);
 	
-	output.ambient3_color1 = float4(ambientKoeff, diffuseKoeff.r);
+    float3 color = float3(0.0f, 0.0f, 0.0f);
 	
-	output.diffuse3_color1 = float4(diffuseKoeff, diffuseKoeff.g);
+	output.ambient3_color1 = float4(ambientKoeff, color.r);
 	
-	output.specular3_color1 = float4(specularKoeff, diffuseKoeff.b);
+	output.diffuse3_color1 = float4(diffuseKoeff, color.g);
+	
+	output.specular3_color1 = float4(specularKoeff, color.b);
 	
 	return output;
 }

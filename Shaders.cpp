@@ -198,3 +198,49 @@ void DShader::Bind()
 {
 	Pipeline::Deferred::GeometryPass::DomainShader::Bind::DomainShader(dShader);
 }
+
+IndirectVShader::IndirectVShader(const std::string shaderPath) : VShader(shaderPath)
+{
+}
+
+void IndirectVShader::Bind()
+{
+	Pipeline::Deferred::GeometryPass::VertexShader::Bind::VertexShader(vShader);
+	Pipeline::Particles::Render::Clear::InputAssembler();
+}
+
+GShader::GShader(const std::string shaderPath)
+{
+	std::string shaderData;
+	std::ifstream reader;
+
+	shaderData.clear();
+	reader.close();
+	reader.open(shaderPath, std::ios::binary | std::ios::ate);
+	if (!reader.is_open())
+	{
+		std::cerr << "Could not open geometry shader file!" << std::endl;
+		return;
+	}
+
+	reader.seekg(0, std::ios::end);
+	shaderData.reserve(static_cast<unsigned int>(reader.tellg()));
+	reader.seekg(0, std::ios::beg);
+
+	shaderData.assign(std::istreambuf_iterator<char>(reader), std::istreambuf_iterator<char>());
+
+	if (FAILED(Pipeline::Device()->CreateGeometryShader(shaderData.c_str(), shaderData.length(), nullptr, &gShader)))
+	{
+		std::cerr << "Failed to create geometry shader!" << std::endl;
+	}
+}
+
+GShader::~GShader()
+{
+	gShader->Release();
+}
+
+void GShader::Bind()
+{
+	Pipeline::Particles::Render::Bind::GeometryShader(gShader);
+}

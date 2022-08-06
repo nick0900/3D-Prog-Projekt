@@ -29,7 +29,7 @@ namespace CSConfig
 	{
 		int lightType = -1;
 		int shadowMapType = -1;
-		float shadowBias = 0.005f;
+		float shadowBias = 0.09f;
 		bool shadowcaster = false;
 		bool padding[3];
 	} settings;
@@ -303,6 +303,11 @@ void Pipeline::Deferred::GeometryPass::PixelShader::Bind::SpecularMap(ID3D11Shad
 	Base::immediateContext->PSSetShaderResources(2, 1, &SRV);
 }
 
+void Pipeline::Deferred::GeometryPass::PixelShader::Bind::Reflectionmap(ID3D11ShaderResourceView* SRV)
+{
+	Base::immediateContext->PSSetShaderResources(0, 1, &SRV);
+}
+
 void Pipeline::Deferred::GeometryPass::PixelShader::Bind::GBuffers(ID3D11RenderTargetView* normal, ID3D11RenderTargetView* ambient, ID3D11RenderTargetView* diffuse, ID3D11RenderTargetView* specular, ID3D11DepthStencilView* dsView)
 {
 	ID3D11RenderTargetView* RTVs[4] = { normal, ambient, diffuse, specular };
@@ -424,9 +429,24 @@ bool Pipeline::Deferred::LightPass::ComputeShader::Dispatch32X32(UINT width, UIN
 		return false;
 	}
 
-	if (((width + topLeftX) > Base::backBufferWidth) || ((height + topLeftY) > Base::backBufferHeight))
+	Base::immediateContext->Dispatch(dispatchWidth, dispatchHeight, 1);
+	return true;
+}
+
+bool Pipeline::Deferred::LightPass::ComputeShader::ColorDispatch32X32(UINT width, UINT height, UINT topLeftX, UINT topLeftY)
+{
+	SharedResources::BindComputeShader(SharedResources::cShader::ColorPass32x32);
+
+	UINT computeWidth = 32;
+	UINT computeHeight = 32;
+
+	UINT dispatchWidth = width / computeWidth;
+
+	UINT dispatchHeight = height / computeHeight;
+
+	if ((computeWidth * dispatchWidth != width) || (computeHeight * dispatchHeight != height))
 	{
-		std::cerr << "Viewport overflowing backbuffer width and or height." << std::endl;
+		std::cerr << "width and height must be a multiple of " << computeWidth << " and " << computeHeight << " respectively!" << std::endl;
 		return false;
 	}
 
@@ -438,6 +458,12 @@ void Pipeline::Deferred::LightPass::ComputeShader::Clear::ComputeSRVs()
 {
 	ID3D11ShaderResourceView* clear[7] = { nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr};
 	Base::immediateContext->CSSetShaderResources(0, 7, clear);
+}
+
+void Pipeline::Deferred::LightPass::ComputeShader::Clear::TargetUAV()
+{
+	ID3D11UnorderedAccessView* clear[1] = { nullptr };
+	Base::immediateContext->CSSetUnorderedAccessViews(0, 1, clear, nullptr);
 }
 
 void Pipeline::ResourceManipulation::MapBuffer(ID3D11Buffer* buffer, D3D11_MAPPED_SUBRESOURCE* mappedResource)
@@ -497,6 +523,12 @@ void Pipeline::Clean::RenderTargetView(ID3D11RenderTargetView* rtv)
 void Pipeline::Clean::DepthStencilView(ID3D11DepthStencilView* dsv)
 {
 	Base::immediateContext->ClearDepthStencilView(dsv, D3D11_CLEAR_DEPTH | D3D11_CLEAR_STENCIL, 1, 0);
+}
+
+void Pipeline::Clean::UnorderedAccessView(ID3D11UnorderedAccessView* uav)
+{
+	float clearColour[4] = { 0, 0, 0, 0 };
+	Base::immediateContext->ClearUnorderedAccessViewFloat(uav, clearColour);
 }
 
 void Pipeline::Deferred::LightPass::ComputeShader::Settings::LightType(int type)
@@ -563,4 +595,126 @@ void Pipeline::Deferred::GeometryPass::DomainShader::Bind::ProjectionBuffer(ID3D
 void Pipeline::Deferred::GeometryPass::DomainShader::UnBind::DomainShader()
 {
 	Base::immediateContext->DSSetShader(nullptr, nullptr, 0);
+}
+
+void Pipeline::Particles::Update::Bind::AppendBuffer(ID3D11UnorderedAccessView* uav)
+{
+	UINT init[1] = { 1000 };
+	Base::immediateContext->CSSetUnorderedAccessViews(0, 1, &uav, init);
+}
+
+void Pipeline::Particles::Update::Bind::ConsumeBuffer(ID3D11UnorderedAccessView* uav)
+{
+	UINT init[1] = { 0 };
+	Base::immediateContext->CSSetUnorderedAccessViews(1, 1, &uav, init);
+}
+
+void Pipeline::Particles::Update::Bind::AppendConsumeBuffers(ID3D11UnorderedAccessView* uav[2], UINT count[2])
+{
+	Base::immediateContext->CSSetUnorderedAccessViews(0, 2, uav, count);
+}
+
+void Pipeline::Particles::Update::Bind::ConstantBuffer(ID3D11Buffer* countBuffer)
+{
+	Base::immediateContext->CSSetConstantBuffers(0, 1, &countBuffer);
+}
+
+void Pipeline::Particles::Update::Clear::UAVs()
+{
+	ID3D11UnorderedAccessView* clear[2] = { nullptr, nullptr };
+	Base::immediateContext->CSSetUnorderedAccessViews(0, 2, clear, nullptr);
+}
+
+void Pipeline::Particles::CopyCount(ID3D11Buffer* dstBuffer, ID3D11UnorderedAccessView* srcView)
+{
+	Base::immediateContext->CopyStructureCount(dstBuffer, 0, srcView);
+}
+
+void Pipeline::Particles::Update::Dispatch32(UINT particleCount)
+{
+	UINT computeWidth = 32;
+
+	UINT dispatchWidth = particleCount / computeWidth + (particleCount % computeWidth != 0);
+
+	Base::immediateContext->Dispatch(dispatchWidth, 1, 1);
+}
+
+void Pipeline::Particles::Update::Dispatch1()
+{
+	Base::immediateContext->Dispatch(1, 1, 1);
+}
+
+void Pipeline::Particles::Render::Clear::GeometryShader()
+{
+	Base::immediateContext->GSSetShader(nullptr, nullptr, 0);
+}
+
+void Pipeline::Particles::Render::Clear::InputAssembler()
+{
+	ID3D11Buffer* clear[1] = { nullptr };
+	UINT uint = 0;
+	Base::immediateContext->IASetVertexBuffers(0, 1, clear, &uint, &uint);
+	Base::immediateContext->IASetIndexBuffer(nullptr, DXGI_FORMAT_UNKNOWN, 0);
+	Base::immediateContext->IASetInputLayout(nullptr);
+}
+
+void Pipeline::Particles::Render::Clear::ParticleBuffer()
+{
+	ID3D11ShaderResourceView* clear[1] = { nullptr };
+	Base::immediateContext->VSSetShaderResources(0, 1, clear);
+}
+
+void Pipeline::Particles::Render::Clear::BlendState()
+{
+	Base::immediateContext->OMSetBlendState(nullptr, nullptr, 0xffffffff);
+}
+
+void Pipeline::Particles::Render::Clear::DepthState()
+{
+	Base::immediateContext->OMSetDepthStencilState(nullptr, 0);
+}
+
+void Pipeline::Particles::Render::Bind::GeometryShader(ID3D11GeometryShader* gShader)
+{
+	Base::immediateContext->GSSetShader(gShader, nullptr, 0);
+}
+
+void Pipeline::Particles::Render::Bind::ParticleBuffer(ID3D11ShaderResourceView* bufferSRV)
+{
+	Base::immediateContext->VSSetShaderResources(0, 1, &bufferSRV);
+}
+
+void Pipeline::Particles::Render::Bind::GSViewBuffer(ID3D11Buffer* viewBuffer)
+{
+	Base::immediateContext->GSSetConstantBuffers(0, 1, &viewBuffer);
+}
+
+void Pipeline::Particles::Render::Bind::GSProjectionBuffer(ID3D11Buffer* projBuffer)
+{
+	Base::immediateContext->GSSetConstantBuffers(1, 1, &projBuffer);
+}
+
+void Pipeline::Particles::Render::Bind::GSTransformBuffer(ID3D11Buffer* transformBuffer)
+{
+	Base::immediateContext->GSSetConstantBuffers(2, 1, &transformBuffer);
+}
+
+void Pipeline::Particles::Render::Bind::PSParticleTexture(ID3D11ShaderResourceView* srv)
+{
+	Base::immediateContext->PSSetShaderResources(0, 1, &srv);
+}
+
+void Pipeline::Particles::Render::Bind::BlendState(ID3D11BlendState* bs)
+{
+	Base::immediateContext->OMSetBlendState(bs, nullptr,0xffffffff);
+}
+
+void Pipeline::Particles::Render::Bind::DepthState(ID3D11DepthStencilState* dss)
+{
+	Base::immediateContext->OMSetDepthStencilState(dss, 0);
+}
+
+void Pipeline::Particles::Render::IndirectInstancedDraw(ID3D11Buffer* argsBuffer)
+{
+	Base::immediateContext->DrawInstancedIndirect(argsBuffer, 0);
 }

@@ -5,6 +5,7 @@
 
 #include "SharedResources.h"
 #include "Pipeline.h"
+#include "Renderer.h"
 
 STDOBJ::STDOBJ(const std::string OBJFilepath)
 {
@@ -539,7 +540,7 @@ void STDOBJTesselated::DepthRender()
 	Pipeline::Deferred::GeometryPass::DomainShader::UnBind::DomainShader();
 }
 
-STDOBJMirror::STDOBJMirror(const std::string OBJFilepath, UINT resolution, Renderer* renderer, float nearPlane, float farPlane) : STDOBJ(OBJFilepath), renderer(renderer), resolution(resolution), nearPlane(nearPlane), farPlane(farPlane)
+STDOBJMirror::STDOBJMirror(const std::string OBJFilepath, UINT resolution, DeferredRenderer* renderer, float nearPlane, float farPlane) : STDOBJ(OBJFilepath), renderer(renderer), resolution(resolution), nearPlane(nearPlane), farPlane(farPlane), blockRender(false)
 {
 	D3D11_TEXTURE2D_DESC textureDesc;
 	textureDesc.MipLevels = 1;
@@ -548,7 +549,7 @@ STDOBJMirror::STDOBJMirror(const std::string OBJFilepath, UINT resolution, Rende
 	textureDesc.SampleDesc.Count = 1;
 	textureDesc.SampleDesc.Quality = 0;
 	textureDesc.Usage = D3D11_USAGE_DEFAULT;
-	textureDesc.BindFlags = D3D11_BIND_RENDER_TARGET | D3D11_BIND_SHADER_RESOURCE;
+	textureDesc.BindFlags = D3D11_BIND_UNORDERED_ACCESS | D3D11_BIND_SHADER_RESOURCE;
 	textureDesc.CPUAccessFlags = 0;
 	textureDesc.MiscFlags = D3D11_RESOURCE_MISC_TEXTURECUBE;
 	textureDesc.Width = resolution;
@@ -588,36 +589,6 @@ STDOBJMirror::STDOBJMirror(const std::string OBJFilepath, UINT resolution, Rende
 			std::cerr << "Error: Failed to set up UAVs" << std::endl;
 		}
 	}
-
-	textureDesc.MipLevels = 1;
-	textureDesc.ArraySize = 1;
-	textureDesc.Format = DXGI_FORMAT_R24G8_TYPELESS;
-	textureDesc.SampleDesc.Count = 1;
-	textureDesc.SampleDesc.Quality = 0;
-	textureDesc.Usage = D3D11_USAGE_DEFAULT;
-	textureDesc.BindFlags = D3D11_BIND_DEPTH_STENCIL | D3D11_BIND_SHADER_RESOURCE;
-	textureDesc.CPUAccessFlags = 0;
-	textureDesc.MiscFlags = 0;
-	textureDesc.Width = resolution;
-	textureDesc.Height = resolution;
-
-	if (FAILED(Pipeline::Device()->CreateTexture2D(&textureDesc, nullptr, &depthStencilTexture)))
-	{
-		std::cerr << "Failed to set up depth stencil texture" << std::endl;
-	}
-
-	D3D11_DEPTH_STENCIL_VIEW_DESC dsvDesc;
-	dsvDesc.Format = DXGI_FORMAT_D24_UNORM_S8_UINT;
-	dsvDesc.ViewDimension = D3D11_DSV_DIMENSION_TEXTURE2D;
-	dsvDesc.Flags = 0;
-	D3D11_TEX2D_DSV texDSV;
-	texDSV.MipSlice = 0;
-	dsvDesc.Texture2D = texDSV;
-
-	if (FAILED(Pipeline::Device()->CreateDepthStencilView(depthStencilTexture, &dsvDesc, &DSV)))
-	{
-		std::cerr << "Error: Failed to set up DSV" << std::endl;
-	}
 }
 
 STDOBJMirror::~STDOBJMirror()
@@ -628,43 +599,41 @@ STDOBJMirror::~STDOBJMirror()
 	}
 	textureCube->Release();
 	SRV->Release();
-	depthStencilTexture->Release();
-	DSV->Release();
+}
+
+void STDOBJMirror::Render()
+{
+	if (blockRender) return;
+
+	UINT stride = sizeof(Vertex);
+	UINT offset = 0;
+
+	Pipeline::Deferred::GeometryPass::VertexShader::Bind::VertexBuffer(stride, offset, vertexBuffer);
+	Pipeline::Deferred::GeometryPass::VertexShader::Bind::IndexBuffer(indexBuffer);
+
+	UpdateTransformBuffer();
+
+	Pipeline::Deferred::GeometryPass::VertexShader::Bind::ObjectTransform(worldTransformBuffer);
+
+	SharedResources::BindVertexShader(SharedResources::vShader::VSCubemap);
+	Pipeline::Deferred::GeometryPass::VertexShader::Bind::PrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+
+	SharedResources::BindPixelShader(SharedResources::pShader::PSCubemap);
+
+	Pipeline::Deferred::GeometryPass::PixelShader::Bind::Reflectionmap(SRV);
+
+	for (Submesh submesh : submeshes)
+	{
+		Pipeline::DrawIndexed(submesh.size, submesh.Start);
+	}
 }
 
 void STDOBJMirror::ReflectionRender()
 {
 	CameraPerspective view = CameraPerspective(resolution, resolution, 0.0f, 0.0f, 90.0f, nearPlane, farPlane);
+	view.Translate({ position.x, position.y, position.z }, OBJECT_TRANSFORM_SPACE_GLOBAL, OBJECT_TRANSFORM_REPLACE);
 
-	view->Rotate({ 0.0f, 90.0f, 0.0f }, OBJECT_TRANSFORM_SPACE_GLOBAL, OBJECT_TRANSFORM_REPLACE, OBJECT_ROTATION_UNIT_DEGREES);
-	view->UpdateTransformBuffer();
-
-	renderer->CameraDistanceRender(mapRTV[0], DSV, view);
-
-	view->Rotate({ 0.0f, -90.0f, 0.0f }, OBJECT_TRANSFORM_SPACE_GLOBAL, OBJECT_TRANSFORM_REPLACE, OBJECT_ROTATION_UNIT_DEGREES);
-	view->UpdateTransformBuffer();
-
-	renderer->CameraDistanceRender(mapRTV[1], DSV, view);
-
-	view->Rotate({ -90.0f, 0.0f, 0.0f }, OBJECT_TRANSFORM_SPACE_GLOBAL, OBJECT_TRANSFORM_REPLACE, OBJECT_ROTATION_UNIT_DEGREES);
-	view->UpdateTransformBuffer();
-
-	renderer->CameraDistanceRender(mapRTV[2], DSV, view);
-
-	view->Rotate({ 90.0f, 0.0f, 0.0f }, OBJECT_TRANSFORM_SPACE_GLOBAL, OBJECT_TRANSFORM_REPLACE, OBJECT_ROTATION_UNIT_DEGREES);
-	view->UpdateTransformBuffer();
-
-	renderer->CameraDistanceRender(mapRTV[3], DSV, view);
-
-	view->Rotate({ 0.0f, 0.0f, 0.0f }, OBJECT_TRANSFORM_SPACE_GLOBAL, OBJECT_TRANSFORM_REPLACE, OBJECT_ROTATION_UNIT_DEGREES);
-	view->UpdateTransformBuffer();
-
-	renderer->CameraDistanceRender(mapRTV[4], DSV, view);
-
-	view->Rotate({ 0.0f, 180.0f, 0.0f }, OBJECT_TRANSFORM_SPACE_GLOBAL, OBJECT_TRANSFORM_REPLACE, OBJECT_ROTATION_UNIT_DEGREES);
-	view->UpdateTransformBuffer();
-
-	renderer->CameraDistanceRender(mapRTV[5], DSV, view);
-
-	delete view;
+	blockRender = true;
+	renderer->OmniCameraDeferredRender(&view, UAVs);
+	blockRender = false;
 }

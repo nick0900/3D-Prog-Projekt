@@ -60,9 +60,9 @@ OUTPUT_VERTEX main(HS_CONSTANT_DATA_OUTPUT input, float3 barycentric : SV_Domain
     OUTPUT_VERTEX output;
     
     output.position = mul(float4(interpolatedPosition, 1.0f), inverseCameraTransform);
-    output.position = mul(output.position, projectionMatrix);
+    output.distance = length(output.position);
     
-    output.distance = length(interpolatedPosition);
+    output.position = mul(output.position, projectionMatrix);
     
     output.normal = mul(barycentric, float3x3(patch[0].normal, patch[1].normal, patch[2].normal));
     

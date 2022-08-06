@@ -47,6 +47,7 @@ void Camera::SetActiveCamera()
 	UpdateTransformBuffer();
 	Pipeline::Deferred::GeometryPass::VertexShader::Bind::cameraViewBuffer(worldTransformBuffer);
 	Pipeline::Deferred::GeometryPass::DomainShader::Bind::viewBuffer(worldTransformBuffer);
+	Pipeline::Particles::Render::Bind::GSViewBuffer(worldTransformBuffer);
 	Pipeline::Deferred::LightPass::ComputeShader::Bind::CameraViewBuffer(worldTransformBuffer);
 
 	if (projModified)
@@ -56,6 +57,7 @@ void Camera::SetActiveCamera()
 	}
 	Pipeline::Deferred::GeometryPass::VertexShader::Bind::cameraProjectionBuffer(projectionBuffer);
 	Pipeline::Deferred::GeometryPass::DomainShader::Bind::ProjectionBuffer(projectionBuffer);
+	Pipeline::Particles::Render::Bind::GSProjectionBuffer(projectionBuffer);
 	Pipeline::Deferred::LightPass::ComputeShader::Bind::CameraProjectionBuffer(projectionBuffer);
 
 	Pipeline::Deferred::LightPass::ComputeShader::Bind::CameraViewportBuffer(viewBuffer);

@@ -40,7 +40,7 @@ PixelShaderOutput main(PixelShaderInput input)
 	
 	output.specular3_color1 = specularKoeff.Sample(basicSampler, input.uv);
 	
-	float3 color = diffuseKoeff.Sample(basicSampler, input.uv).rgb;
+	float3 color = float3(0.0f, 0.0f, 0.0f);
 	
 	output.ambient3_color1.w = color.r;
 	output.diffuse3_color1.w = color.g;

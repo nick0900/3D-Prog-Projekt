@@ -11,32 +11,67 @@
 #include "Camera.h"
 #include "Lights.h"
 #include "QuadTree.h"
+#include "ParticleSystems.h"
 
-class Renderer
+class DepthRenderer
+{
+public:
+	DepthRenderer(std::vector<Object*>* dynamicObjects, QuadTree** staticObjects);
+
+	void CameraDepthRender(ID3D11DepthStencilView* dsv, Camera* view);
+
+private:
+	std::vector<Object*>* dynamicObjects;
+	QuadTree** staticObjects;
+};
+
+class OmniDistanceRenderer
+{
+public:
+	OmniDistanceRenderer(UINT resolution, std::vector<Object*>* dynamicObjects, QuadTree** staticObjects);
+	virtual ~OmniDistanceRenderer();
+
+	void OmniDistanceRender(ID3D11RenderTargetView* rtv[6], Camera* view);
+
+	UINT Resolution();
+
+private:
+	UINT resolution;
+
+	ID3D11Texture2D* dsTexture;
+	ID3D11DepthStencilView* dsView;
+
+	std::vector<Object*>* dynamicObjects;
+	QuadTree** staticObjects;
+
+	void CameraDistanceRender(ID3D11RenderTargetView* rtv, Camera* view);
+};
+
+class DeferredRenderer
 {
 	public:
-		Renderer(std::vector<Object*>* dynamicObjects, QuadTree* staticObjects, std::vector<Camera*>* renderCameras, std::vector<LightBase*>* sceneLights);
-		~Renderer();
+		DeferredRenderer(UINT widthRes, UINT heightRes, std::vector<Object*>* dynamicObjects, QuadTree** staticObjects, std::vector<LightBase*>* sceneLights, std::vector<ParticleSystem*>* particles);
+		~DeferredRenderer();
 
-		void Render();
-
-		void Switch();
-
-		void CameraDepthRender(ID3D11DepthStencilView* dsv, Camera* view);
-		void CameraDistanceRender(ID3D11RenderTargetView* rtv, ID3D11DepthStencilView* dsv, Camera* view);
-		void CameraDeferredRender(Camera* renderView);
-
-		void AttachNewQuadtree(QuadTree* staticObjects);
+		void CameraDeferredRender(Camera* renderView, ID3D11UnorderedAccessView* targetUAV);
+		void OmniCameraDeferredRender(Camera* renderView, ID3D11UnorderedAccessView* targetUAVs[6]);
 
 	private:
 		bool DeferredSetup();
 
-		void ReflectionUpdate();
+		bool CreateDepthStencil();
 
-		bool CreateBackBufferViews();
+		UINT widthRes;
+		UINT heightRes;
 
-		ID3D11RenderTargetView* backBufferRTV;
-		ID3D11UnorderedAccessView* backBufferUAV;
+		std::vector<LightBase*>* sceneLights;
+
+		std::vector<Object*>* dynamicObjects;
+
+		std::vector<ParticleSystem*>* particles;
+
+		QuadTree** staticObjects;
+
 		ID3D11Texture2D* dsTexture;
 		ID3D11DepthStencilView* dsView;
 		ID3D11ShaderResourceView* depthSRV;
@@ -58,12 +93,4 @@ class Renderer
 		ID3D11ShaderResourceView* ambientSRV;
 		ID3D11ShaderResourceView* diffuseSRV;
 		ID3D11ShaderResourceView* specularSRV;
-
-		std::vector<Camera*>* renderCameras;
-
-		std::vector<LightBase*>* sceneLights;
-
-		std::vector<Object*>* dynamicObjects;
-
-		QuadTree* staticObjects;
 };
