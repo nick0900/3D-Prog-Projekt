@@ -135,6 +135,7 @@ void ParticleSystem::BuffersSetup(D3D11_SUBRESOURCE_DATA& data, UINT structSize,
 	ID3D11UnorderedAccessView* uavs[2] = { appendConsumeViewFirst, appendConsumeViewSecond };
 	UINT init[2] = { initialCount, 0 };
 	Pipeline::Particles::Update::Bind::AppendConsumeBuffers(uavs, init);
+	Pipeline::Particles::Update::Clear::UAVs();
 }
 
 bool ParticleSystem::IsInitilized()
@@ -192,7 +193,7 @@ void ParticleSystem::BindForParticleRender()
 	}
 }
 
-Galaxy::Galaxy(const std::string particleTexturePath) : particleCount(0)
+Galaxy::Galaxy(const std::string particleTexturePath) : particleCount(0), re(42)
 {
 	if (!CreateTransformBuffer())
 	{
@@ -256,7 +257,6 @@ void Galaxy::InitializeParticles(UINT count)
 {
 	maxParticles = count;
 
-	std::default_random_engine re(1);
 	std::normal_distribution<float> nd(0, 1);
 	std::exponential_distribution<float> ed(0.5);
 	std::uniform_real_distribution<float> ud(0.0f, 360.0f);
@@ -326,9 +326,8 @@ void Galaxy::AddParticles()
 
 	GalaxyParticleStruct particle;
 
-	std::default_random_engine re(1);
-	std::normal_distribution<float> nd(0, 0.5);
-	std::exponential_distribution<float> ed(5);
+	std::normal_distribution<float> nd(0, 1);
+	std::exponential_distribution<float> ed(0.5);
 	std::uniform_real_distribution<float> ud(0.0f, 360.0f);
 
 	float angle = ud(re);
@@ -350,13 +349,13 @@ void Galaxy::AddParticles()
 
 	DirectX::XMStoreFloat4x4(&(particle.rotation), rotationMatrix);
 
-	std::uniform_real_distribution<float> udcolor(0.0f, 0.1f);
+	std::uniform_real_distribution<float> udcolor(0.0f, 0.5f);
 	float colorDeviance = udcolor(re);
 
-	particle.color[0] = 1.0f - colorDeviance;
+	particle.color[0] = 1.0f - colorDeviance / 5.0f;
 	colorDeviance = udcolor(re);
 	particle.color[1] = 1.0f - colorDeviance;
-	particle.color[2] = 0.3f;
+	particle.color[2] = 0.6f;
 
 	D3D11_MAPPED_SUBRESOURCE mappedResource;
 	ZeroMemory(&mappedResource, sizeof(D3D11_MAPPED_SUBRESOURCE));
@@ -373,17 +372,21 @@ void Galaxy::AddParticles()
 
 	Pipeline::Particles::Update::Dispatch1();
 
+	Pipeline::Particles::Update::Clear::UAVs();
+
 	particleCount++;
 }
 
 void Galaxy::RemoveParticles()
 {
-	if (particleCount == 0) return;
+	if (particleCount == 1) return;
 	BindForParticleUpdate();
 
 	SharedResources::BindComputeShader(SharedResources::cShader::GalaxyRemove1);
 
 	Pipeline::Particles::Update::Dispatch1();
+
+	Pipeline::Particles::Update::Clear::UAVs();
 
 	particleCount--;
 }

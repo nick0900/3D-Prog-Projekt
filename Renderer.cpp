@@ -209,8 +209,6 @@ void DeferredRenderer::CameraDeferredRender(Camera* renderView, ID3D11UnorderedA
 
 	Pipeline::Deferred::GeometryPass::PixelShader::Clear::GBuffers();
 
-	Pipeline::Clean::UnorderedAccessView(targetUAV);
-
 	Pipeline::Deferred::LightPass::ComputeShader::Bind::BackBufferUAV(targetUAV);
 
 	Pipeline::Deferred::LightPass::ComputeShader::Bind::DepthBuffer(depthSRV);

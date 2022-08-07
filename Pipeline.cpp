@@ -29,7 +29,7 @@ namespace CSConfig
 	{
 		int lightType = -1;
 		int shadowMapType = -1;
-		float shadowBias = 0.09f;
+		float shadowBias = 0.01f;
 		bool shadowcaster = false;
 		bool padding[3];
 	} settings;
@@ -595,18 +595,6 @@ void Pipeline::Deferred::GeometryPass::DomainShader::Bind::ProjectionBuffer(ID3D
 void Pipeline::Deferred::GeometryPass::DomainShader::UnBind::DomainShader()
 {
 	Base::immediateContext->DSSetShader(nullptr, nullptr, 0);
-}
-
-void Pipeline::Particles::Update::Bind::AppendBuffer(ID3D11UnorderedAccessView* uav)
-{
-	UINT init[1] = { 1000 };
-	Base::immediateContext->CSSetUnorderedAccessViews(0, 1, &uav, init);
-}
-
-void Pipeline::Particles::Update::Bind::ConsumeBuffer(ID3D11UnorderedAccessView* uav)
-{
-	UINT init[1] = { 0 };
-	Base::immediateContext->CSSetUnorderedAccessViews(1, 1, &uav, init);
 }
 
 void Pipeline::Particles::Update::Bind::AppendConsumeBuffers(ID3D11UnorderedAccessView* uav[2], UINT count[2])

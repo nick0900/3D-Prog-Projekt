@@ -85,9 +85,6 @@ cbuffer shadowmappingMatrices : register(b8)
     float4x4 shadowProjection;
 };
 
-//Implement viewport start position
-//dispatch call need to recieve camera start xy and perform chacks and potential modifications to make sure CS works within backbuffer bounds
-
 Texture2D machineDepth : register(t0);
 
 Texture2D normal_shinyness : register(t1);

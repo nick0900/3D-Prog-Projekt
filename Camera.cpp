@@ -294,3 +294,12 @@ bool CameraOrthographic::CreateBuffers()
 
 	return true;
 }
+
+CameraPerspectiveDebug::CameraPerspectiveDebug(UINT widthPixels, UINT heightPixels, UINT topLeftX, UINT topLeftY, float FovAngleY, float NearZ, float FarZ, CameraPerspective* frustumCamera) : CameraPerspective( widthPixels, heightPixels, topLeftX, topLeftY, FovAngleY, NearZ, FarZ), frustumCamera(frustumCamera)
+{
+}
+
+void CameraPerspectiveDebug::ViewFrustum(DirectX::BoundingFrustum& frustum)
+{
+	frustumCamera->ViewFrustum(frustum);
+}

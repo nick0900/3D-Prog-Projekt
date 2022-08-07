@@ -219,9 +219,6 @@ namespace Pipeline
 		{
 			namespace Bind
 			{
-				void AppendBuffer(ID3D11UnorderedAccessView* uav);
-				void ConsumeBuffer(ID3D11UnorderedAccessView* uav);
-
 				void AppendConsumeBuffers(ID3D11UnorderedAccessView* uav[2], UINT count[2]);
 
 				void ConstantBuffer(ID3D11Buffer* countBuffer);

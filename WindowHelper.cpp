@@ -3,7 +3,7 @@
 
 namespace Static
 {
-	char movementInput;
+	UINT movementInput;
 }
 
 LRESULT CALLBACK WindowProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
@@ -48,6 +48,14 @@ LRESULT CALLBACK WindowProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lPara
 		case VK_RIGHT: //right arrow
 			Static::movementInput |= 0x80;
 			break;
+
+		case 0x31: //1 key
+			Static::movementInput |= 0x100;
+			break;
+
+		case 0x32: //2 key
+			Static::movementInput |= 0x200;
+			break;
 		}
 		return 0;
 
@@ -55,35 +63,43 @@ LRESULT CALLBACK WindowProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lPara
 		switch (wParam)
 		{
 		case 0x57: //w
-			Static::movementInput &= 0xfe;
+			Static::movementInput &= 0xffe;
 			break;
 
 		case 0x41: //a
-			Static::movementInput &= 0xfd;
+			Static::movementInput &= 0xffd;
 			break;
 
 		case 0x53: //s
-			Static::movementInput &= 0xfb;
+			Static::movementInput &= 0xffb;
 			break;
 
 		case 0x44: //d
-			Static::movementInput &= 0xf7;
+			Static::movementInput &= 0xff7;
 			break;
 
 		case VK_UP: //up arrow
-			Static::movementInput &= 0xef;
+			Static::movementInput &= 0xfef;
 			break;
 
 		case VK_LEFT: //left arrow
-			Static::movementInput &= 0xdf;
+			Static::movementInput &= 0xfdf;
 			break;
 
 		case VK_DOWN: //down arrow
-			Static::movementInput &= 0xbf;
+			Static::movementInput &= 0xfbf;
 			break;
 
 		case VK_RIGHT: //right arrow
-			Static::movementInput &= 0x7f;
+			Static::movementInput &= 0xf7f;
+			break;
+
+		case 0x31: //1 key
+			Static::movementInput &= 0xeff;
+			break;
+
+		case 0x32: //2 key
+			Static::movementInput &= 0xdff;
 			break;
 		}
 		return 0;
@@ -119,7 +135,7 @@ bool SetupWindow(HINSTANCE instance, UINT width, UINT height, int nCmdShow, HWND
 	return true;
 }
 
-char GetInputTracker()
+UINT GetInputTracker()
 {
 	return Static::movementInput;
 }

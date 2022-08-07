@@ -1,6 +1,7 @@
 #pragma once
 #include <DirectXMath.h>
 #include <string>
+#include <random>
 
 #include "BaseObject.h"
 
@@ -86,4 +87,6 @@ private:
 	ID3D11BlendState* blendState;
 
 	ID3D11DepthStencilState* depthState;
+
+	std::default_random_engine re;
 };

@@ -630,6 +630,11 @@ void STDOBJMirror::Render()
 
 void STDOBJMirror::ReflectionRender()
 {
+	for (int i = 0; i < 6; i++)
+	{
+		Pipeline::Clean::UnorderedAccessView(UAVs[i]);
+	}
+
 	CameraPerspective view = CameraPerspective(resolution, resolution, 0.0f, 0.0f, 90.0f, nearPlane, farPlane);
 	view.Translate({ position.x, position.y, position.z }, OBJECT_TRANSFORM_SPACE_GLOBAL, OBJECT_TRANSFORM_REPLACE);
 

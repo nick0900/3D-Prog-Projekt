@@ -8,9 +8,6 @@ cbuffer CameraViewport : register(b3)
     uint topLeftY;
 };
 
-//Implement viewport start position
-//dispatch call need to recieve camera start xy and perform chacks and potential modifications to make sure CS works within backbuffer bounds
-
 Texture2D ambient_color : register(t2);
 
 Texture2D diffuse_color : register(t3);

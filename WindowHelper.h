@@ -4,4 +4,4 @@
 
 bool SetupWindow(HINSTANCE instance, UINT width, UINT height, int nCmdShow, HWND& window);
 
-char GetInputTracker();
+UINT GetInputTracker();

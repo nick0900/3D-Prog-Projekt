@@ -87,7 +87,7 @@ class Camera : public Object
 		UINT ViewportTopLeftX();
 		UINT ViewportTopLeftY();
 
-		void ViewFrustum(DirectX::BoundingFrustum& frustum);
+		virtual void ViewFrustum(DirectX::BoundingFrustum& frustum);
 
 	protected : 
 		virtual DirectX::XMFLOAT4X4 TransformMatrix() override;
@@ -140,6 +140,16 @@ protected:
 private:
 	float FovAngleY;
 	float aspectRatio;
+};
+
+class CameraPerspectiveDebug : public CameraPerspective
+{
+public:
+	CameraPerspectiveDebug(UINT widthPixels, UINT heightPixels, UINT topLeftX, UINT topLeftY, float FovAngleY, float NearZ, float FarZ, CameraPerspective* frustumCamera);
+
+	virtual void ViewFrustum(DirectX::BoundingFrustum& frustum) override;
+private:
+	CameraPerspective* frustumCamera;
 };
 
 class CameraOrthographic : public Camera
