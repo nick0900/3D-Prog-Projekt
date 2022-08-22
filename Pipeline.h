@@ -116,7 +116,6 @@ namespace Pipeline
 					void SpotLightParameterBuffer(ID3D11Buffer* parameterBuffer);
 					void ShadowmappingBuffer(ID3D11Buffer* shadowmappingBuffer);
 
-
 					void DepthBuffer(ID3D11ShaderResourceView* SRV);
 					void NormalBuffer(ID3D11ShaderResourceView* SRV);
 					void AmbientBuffer(ID3D11ShaderResourceView* SRV);
@@ -124,6 +123,9 @@ namespace Pipeline
 					void SpecularBuffer(ID3D11ShaderResourceView* SRV);
 					void ShadowMap(ID3D11ShaderResourceView* SRV);
 					void ShadowCubeMap(ID3D11ShaderResourceView* SRV);
+					void LightArrayParameters(ID3D11ShaderResourceView* SRV);
+					void LightArrayShadowMapping(ID3D11ShaderResourceView* SRV);
+					void LightArrayShadowmaps(ID3D11ShaderResourceView* SRV);
 
 					void BackBufferUAV(ID3D11UnorderedAccessView* UAV);
 				}
@@ -143,6 +145,7 @@ namespace Pipeline
 					void LightType(int type);
 					void ShadowMapType(int type);
 					void Shadowcaster(bool castsShadows);
+					void LightCount(UINT count);
 
 					void BindBuffer();
 				}
@@ -163,11 +166,6 @@ namespace Pipeline
 		void BorderSampleWhite();
 	}
 
-	namespace ProjectionMapping
-	{
-
-	}
-
 	namespace Clean
 	{
 		void RenderTargetView(ID3D11RenderTargetView* rtv);
@@ -179,6 +177,9 @@ namespace Pipeline
 	{
 		void MapBuffer(ID3D11Buffer* buffer, D3D11_MAPPED_SUBRESOURCE* mappedResource);
 		void UnmapBuffer(ID3D11Buffer* buffer);
+		void MapStagingBuffer(ID3D11Buffer* buffer, D3D11_MAPPED_SUBRESOURCE* mappedResource);
+		void StageResource(ID3D11Buffer* dstResource, UINT dstIndex, UINT elementSize, ID3D11Buffer* stagingResource);
+		void StageResource(ID3D11Texture2D* dstResource, UINT dstIndex, ID3D11Texture2D* stagingResource);
 	}
 
 	namespace Particles

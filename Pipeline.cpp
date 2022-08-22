@@ -28,10 +28,11 @@ namespace CSConfig
 	struct CSSettings
 	{
 		int lightType = -1;
+		UINT lightCount = 0;
 		int shadowMapType = -1;
 		float shadowBias = 0.01f;
 		bool shadowcaster = false;
-		bool padding[3];
+		bool padding[15];
 	} settings;
 
 	ID3D11Buffer* CSConfigBuffer;
@@ -196,7 +197,16 @@ bool Pipeline::GetBackbufferUAV(ID3D11UnorderedAccessView*& backBufferUAV)
 		return false;
 	}
 
-	HRESULT hr = Pipeline::Device()->CreateUnorderedAccessView(backBuffer, nullptr, &backBufferUAV);
+	D3D11_UNORDERED_ACCESS_VIEW_DESC uavDesc;
+	uavDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
+	uavDesc.ViewDimension = D3D11_UAV_DIMENSION_TEXTURE2DARRAY;
+	D3D11_TEX2D_ARRAY_UAV texUAV;
+	texUAV.ArraySize = 1;
+	texUAV.MipSlice = 0;
+	texUAV.FirstArraySlice = 0;
+	uavDesc.Texture2DArray = texUAV;
+
+	HRESULT hr = Pipeline::Device()->CreateUnorderedAccessView(backBuffer, &uavDesc, &backBufferUAV);
 
 	backBuffer->Release();
 
@@ -407,6 +417,21 @@ void Pipeline::Deferred::LightPass::ComputeShader::Bind::ShadowCubeMap(ID3D11Sha
 	Base::immediateContext->CSSetShaderResources(6, 1, &SRV);
 }
 
+void Pipeline::Deferred::LightPass::ComputeShader::Bind::LightArrayParameters(ID3D11ShaderResourceView* SRV)
+{
+	Base::immediateContext->CSSetShaderResources(7, 1, &SRV);
+}
+
+void Pipeline::Deferred::LightPass::ComputeShader::Bind::LightArrayShadowMapping(ID3D11ShaderResourceView* SRV)
+{
+	Base::immediateContext->CSSetShaderResources(8, 1, &SRV);
+}
+
+void Pipeline::Deferred::LightPass::ComputeShader::Bind::LightArrayShadowmaps(ID3D11ShaderResourceView* SRV)
+{
+	Base::immediateContext->CSSetShaderResources(9, 1, &SRV);
+}
+
 void Pipeline::Deferred::LightPass::ComputeShader::Bind::BackBufferUAV(ID3D11UnorderedAccessView* UAV)
 {
 	Base::immediateContext->CSSetUnorderedAccessViews(0, 1, &UAV, nullptr);
@@ -474,6 +499,21 @@ void Pipeline::ResourceManipulation::MapBuffer(ID3D11Buffer* buffer, D3D11_MAPPE
 void Pipeline::ResourceManipulation::UnmapBuffer(ID3D11Buffer* buffer)
 {
 	Base::immediateContext->Unmap(buffer, 0);
+}
+
+void Pipeline::ResourceManipulation::MapStagingBuffer(ID3D11Buffer* buffer, D3D11_MAPPED_SUBRESOURCE* mappedResource)
+{
+	Base::immediateContext->Map(buffer, 0, D3D11_MAP_WRITE, 0, mappedResource);
+}
+
+void Pipeline::ResourceManipulation::StageResource(ID3D11Buffer* dstResource, UINT dstIndex, UINT elementSize, ID3D11Buffer* stagingResource)
+{
+	Base::immediateContext->CopySubresourceRegion(dstResource, 0, elementSize * dstIndex, 0, 0, stagingResource, 0, nullptr);
+}
+
+void Pipeline::ResourceManipulation::StageResource(ID3D11Texture2D* dstResource, UINT dstIndex, ID3D11Texture2D* stagingResource)
+{
+	Base::immediateContext->CopySubresourceRegion(dstResource, dstIndex, 0, 0, 0, stagingResource, 0, nullptr);
 }
 
 void Pipeline::ShadowMapping::ClearPixelShader()
@@ -544,6 +584,11 @@ void Pipeline::Deferred::LightPass::ComputeShader::Settings::ShadowMapType(int t
 void Pipeline::Deferred::LightPass::ComputeShader::Settings::Shadowcaster(bool castsShadows)
 {
 	CSConfig::settings.shadowcaster = castsShadows;
+}
+
+void Pipeline::Deferred::LightPass::ComputeShader::Settings::LightCount(UINT count)
+{
+	CSConfig::settings.lightCount = count;
 }
 
 void Pipeline::Deferred::LightPass::ComputeShader::Settings::BindBuffer()

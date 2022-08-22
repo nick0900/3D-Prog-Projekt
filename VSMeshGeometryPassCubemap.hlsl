@@ -39,14 +39,17 @@ VertexShaderOutput main(VertexShaderInput input)
 {
     VertexShaderOutput output;
     
-    output.sampleVector = normalize(input.position);
-    
     output.position = mul(float4(input.position, 1.0f), objectWorldTransform);
-    output.position = mul(output.position, inverseCameraTransform);
-    output.position = mul(output.position, projectionMatrix);
     
     output.normal = mul(float4(input.normal, 0.0f), transpose(inverseObjectWorldTransform));
     output.normal = normalize(output.normal);
+    
+    float3 cameraWorldPos = mul(float4(0.0f, 0.0f, 0.0f, 1.0f), cameraTransform);
+    
+    output.sampleVector = normalize(reflect(output.position.xyz - cameraWorldPos, output.normal));
+    
+    output.position = mul(output.position, inverseCameraTransform);
+    output.position = mul(output.position, projectionMatrix);
 
     return output;
 }

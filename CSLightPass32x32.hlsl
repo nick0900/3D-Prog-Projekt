@@ -1,11 +1,12 @@
 cbuffer ShaderConfig : register(b0)
 {
     int lightType;
+    uint lightCount;
     int shadowMapType;
     float shadowBias;
     bool shadowCaster;
  
-    bool padding[3];
+    bool padding[15];
 }
 
 cbuffer CameraTransform : register(b1)
@@ -99,7 +100,34 @@ Texture2D singleShadowmap : register(t5);
 
 TextureCube<float> shadowCubemap : register(t6);
 
-RWTexture2D<unorm float4> backBuffer : register(u0);
+struct LightArrayParameterStruct
+{
+    int lightType;
+    float3 diffuse;
+
+    int castShadow;
+    float3 specular;
+
+    float3 position;
+    float falloff;
+
+    float3 direction;
+    float lightFOV;
+};
+
+StructuredBuffer<LightArrayParameterStruct> LightArrayParameters : register(t7);
+
+struct LightArrayShadowmappingStruct
+{
+    float4x4 shadowView;
+    float4x4 shadowProjection;
+};
+
+StructuredBuffer<LightArrayShadowmappingStruct> LightArrayShadowmapMatrices : register(t8);
+
+Texture2DArray LightArrayShadowmaps : register(t9);
+
+RWTexture2DArray<unorm float4> backBuffer : register(u0);
 
 SamplerState wrapSampler : register(s0);
 SamplerState borderSampler : register(s1);
@@ -117,7 +145,7 @@ void main( uint3 pixelCoords : SV_DispatchThreadID )
     
     if (lightType == 0) //AmbientLight
     {
-        backBuffer[uint2(topLeftX + pixelCoords.x, topLeftY + pixelCoords.y)] += float4(diffuseAlbedo * ambientAlbedo * ambient_color.Load(pixelCoords).rgb, 1.0f);
+        backBuffer[uint3(topLeftX + pixelCoords.x, topLeftY + pixelCoords.y, 0)] += float4(diffuseAlbedo * ambientAlbedo * ambient_color.Load(pixelCoords).rgb, 1.0f);
         return;
     }
     
@@ -145,6 +173,53 @@ void main( uint3 pixelCoords : SV_DispatchThreadID )
     float3 reflected;
     
     float shadowFactor = 1.0f;
+    
+    if (lightType == 4) //spot/directional light array
+    {
+        for (int i = 0; i < lightCount; i++)
+        {
+            LightArrayParameterStruct parameters = LightArrayParameters[i];
+            if (parameters.castShadow == 1)
+            {
+                LightArrayShadowmappingStruct shadowMatrices = LightArrayShadowmapMatrices[i];
+                float4 lightSpacePosition = mul(pixelPosition, shadowMatrices.shadowView);
+                lightSpacePosition = mul(lightSpacePosition, shadowMatrices.shadowProjection);
+                lightSpacePosition /= lightSpacePosition.w;
+            
+                float3 sampleTex = float3(0.5f * lightSpacePosition.x + 0.5f, -0.5f * lightSpacePosition.y + 0.5f, i);
+            
+                shadowFactor = ((LightArrayShadowmaps.SampleLevel(borderSampler, sampleTex, 0.0f).r + shadowBias) < lightSpacePosition.z) ? 0.0f : 1.0f;
+            }
+            switch (parameters.lightType)
+            {
+                case 0: //spotlight
+                    lightPath = parameters.position - pixelPosition.xyz;
+                    lightPath = normalize(lightPath);
+            
+                    float spotFactor = (dot(lightPath, parameters.direction) < parameters.lightFOV) ? 0.0f : 1.0f;
+
+                    diffuseColor = spotFactor * (parameters.falloff - length(lightPath)) / parameters.falloff * diffuseAlbedo * parameters.diffuse * max(0.0f, dot(normal, lightPath));
+            
+                    reflected = normalize(reflect(lightPath, normal));
+                    cameraPath = normalize(cameraPath);
+                    specularColor = spotFactor * specularAlbedo * parameters.specular * pow(max(0.0f, dot(reflected, cameraPath)), shinyness);
+                    break;
+                
+                case 1: //directionallight
+                    diffuseColor = diffuseAlbedo * parameters.diffuse * max(0.0f, dot(normal, parameters.direction));
+            
+                    reflected = normalize(reflect(parameters.direction, normal));
+                    cameraPath = normalize(cameraPath);
+                    specularColor = specularAlbedo * parameters.specular * pow(max(0.0f, dot(reflected, cameraPath)), shinyness);
+                    break;
+            }
+    
+            float4 pixelColor = float4((diffuseColor + specularColor) * shadowFactor, 1.0f);
+    
+            backBuffer[uint3(topLeftX + pixelCoords.x, topLeftY + pixelCoords.y, 0)] += pixelColor;
+        }
+        return;
+    }
     
     if (shadowCaster)
     {   
@@ -201,5 +276,5 @@ void main( uint3 pixelCoords : SV_DispatchThreadID )
     
     float4 pixelColor = float4((diffuseColor + specularColor) * shadowFactor, 1.0f);
     
-    backBuffer[uint2(topLeftX + pixelCoords.x, topLeftY + pixelCoords.y)] += pixelColor;
+    backBuffer[uint3(topLeftX + pixelCoords.x, topLeftY + pixelCoords.y, 0)] += pixelColor;
 }

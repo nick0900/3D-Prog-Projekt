@@ -26,7 +26,8 @@ enum LightShaderMode
 	LightTypeAmbientBasic = 0,
 	LightTypePoint = 1,
 	LightTypeDirectional = 2,
-	LightTypeSpot = 3
+	LightTypeSpot = 3,
+	SpotDirArray = 4
 };
 
 struct AmbientLightBuffer
@@ -121,6 +122,51 @@ struct SpotLightBuffer
 	}
 };
 
+struct SpotDirStruct
+{
+	int lightType;
+	float diffuse[3];
+
+	int castShadow;
+	float specular[3];
+
+	float position[3];
+	float falloff;
+
+	float direction[3];
+	float lightFOV;
+
+	SpotDirStruct(float lightFOV, float falloff, const std::array<float, 3>& diffuse, const std::array<float, 3>& specular, const std::array<float, 3>& position, const std::array<float, 3>& direction, int CastShadow) :
+		lightType(0),
+		castShadow(CastShadow),
+		lightFOV(cosf(lightFOV* OBJECT_ROTATION_UNIT_DEGREES / 2)),
+		falloff(falloff)
+	{
+		for (int i = 0; i < 3; i++)
+		{
+			this->diffuse[i] = diffuse[i];
+			this->specular[i] = specular[i];
+			this->position[i] = position[i];
+			this->direction[i] = direction[i];
+		}
+	}
+
+	SpotDirStruct(const std::array<float, 3>& diffuse, const std::array<float, 3>& specular, const std::array<float, 3>& direction, int castShadow) :
+		lightType(1),
+		castShadow(castShadow),
+		lightFOV(0.0f),
+		falloff(0.0f)
+	{
+		for (int i = 0; i < 3; i++)
+		{
+			this->diffuse[i] = diffuse[i];
+			this->specular[i] = specular[i];
+			this->position[i] = 0.0f;
+			this->direction[i] = direction[i];
+		}
+	}
+};
+
 class DepthRenderer;
 class OmniDistanceRenderer;
 class Shadowmap;
@@ -128,15 +174,49 @@ class Shadowmap;
 class LightBase : public Object
 {
 public:
-	LightBase(const std::array<float, 3>& diffuse, const std::array<float, 3>& specular);
-	~LightBase();
+	virtual void Bind() = 0;
+};
+
+class AmbientLight : public LightBase
+{
+public:
+	AmbientLight(const std::array<float, 3>& ambient);
+	~AmbientLight();
+
+	void SetAmbient(std::array<float, 3> lightAmbient);
+	std::array<float, 3> Ambient();
+
+	virtual void Render() override;
+	virtual void DepthRender() override;
+
+	virtual void Bind() override;
+
+protected:
+	void BindBuffer();
+
+	void UpdateParameterBuffer();
+
+	virtual DirectX::XMFLOAT4X4 TransformMatrix() override;
+	virtual DirectX::XMFLOAT4X4 InverseTransformMatrix() override;
+
+private:
+	ID3D11Buffer* parameterBuffer;
+	bool parametersModifyed;
+	std::array<float, 3> lightAmbient;
+};
+
+class SingularLight : public LightBase
+{
+public:
+	SingularLight(const std::array<float, 3>& diffuse, const std::array<float, 3>& specular);
+	~SingularLight();
 
 	void SetDiffuse(std::array<float, 3> lightDiffuse);
 	std::array<float, 3> Diffuse();
 	void SetSpecular(std::array<float, 3> lightSpecular);
 	std::array<float, 3> Specular();
 
-	void Bind();
+	virtual void Bind() override;
 
 	void DeleteShadowMap();
 	bool CastingShadows();
@@ -165,34 +245,7 @@ private:
 	bool parametersModifyed;
 };
 
-class AmbientLight : public LightBase
-{
-public:
-	AmbientLight(const std::array<float, 3>& ambient);
-
-	void SetAmbient(std::array<float, 3> lightAmbient);
-	std::array<float, 3> Ambient();
-
-	virtual Camera* ShadowMapCamera() override;
-
-	virtual void Render() override;
-	virtual void DepthRender() override;
-
-protected:
-	virtual void BindBuffer() override;
-
-	virtual void UpdateParameterBuffer() override;
-
-	virtual DirectX::XMFLOAT4X4 TransformMatrix() override;
-	virtual DirectX::XMFLOAT4X4 InverseTransformMatrix() override;
-
-	virtual DirectX::XMFLOAT4X4 ProjMatrix() override;
-
-private:
-	std::array<float, 3> lightAmbient;
-};
-
-class PointLight : public LightBase
+class PointLight : public SingularLight
 {
 public:
 	PointLight(const std::array<float, 3>& diffuse, const std::array<float, 3>& specular, float falloff);
@@ -222,7 +275,7 @@ private:
 	float farPlane;
 };
 
-class DirectionalLight : public LightBase
+class DirectionalLight : public SingularLight
 {
 public:
 	DirectionalLight(const std::array<float, 3>& diffuse, const std::array<float, 3>& specular);
@@ -249,7 +302,7 @@ private:
 	float farPlane;
 };
 
-class SpotLight : public LightBase
+class SpotLight : public SingularLight
 {
 public:
 	SpotLight(const std::array<float, 3>& diffuse, const std::array<float, 3>& specular, float lightFOV, float fallof);
@@ -284,7 +337,7 @@ private:
 class Shadowmap
 {
 public:
-	Shadowmap(UINT resolution, LightBase* linkedLight);
+	Shadowmap(UINT resolution, SingularLight* linkedLight);
 	virtual ~Shadowmap();
 
 	void Bind();
@@ -302,7 +355,7 @@ protected:
 
 	ID3D11ShaderResourceView* mapSRV;
 
-	LightBase* linkedLight;
+	SingularLight* linkedLight;
 
 private:
 	UINT resolution;
@@ -314,7 +367,7 @@ private:
 class ShadowMapSingle : public Shadowmap
 {
 public:
-	ShadowMapSingle(UINT resolution, LightBase* linkedLight, DepthRenderer* renderer);
+	ShadowMapSingle(UINT resolution, SingularLight* linkedLight, DepthRenderer* renderer);
 	virtual ~ShadowMapSingle();
 
 protected:
@@ -329,7 +382,7 @@ private:
 class ShadowMapCube : public Shadowmap
 {
 public:
-	ShadowMapCube(UINT resolution, LightBase* linkedLight, OmniDistanceRenderer* renderer);
+	ShadowMapCube(UINT resolution, SingularLight* linkedLight, OmniDistanceRenderer* renderer);
 	virtual ~ShadowMapCube();
 
 protected:
@@ -339,4 +392,140 @@ protected:
 private:
 	OmniDistanceRenderer* renderer;
 	ID3D11RenderTargetView* mapRTV[6];
+};
+
+class SpotDirLightArray;
+
+class LightBaseStaging : public Object
+{
+public:
+	LightBaseStaging();
+	virtual ~LightBaseStaging();
+
+	void RemoveShadowMapping();
+	void SetCastShadow(bool castShadow);
+	bool CastShadow();
+	UINT ShadowmapResolution();
+
+	virtual Camera* ShadowMapCamera() = 0;
+
+	void StageLightParameters(UINT index, ID3D11Buffer* parametersStructuredBuffer);
+	void StageLightShadowmap(UINT index, ID3D11Buffer* shadowProjectionsStructuredBuffer, ID3D11Texture2D* shadowmapArray);
+
+	ID3D11DepthStencilView* StagingShadowmapDSV();
+
+	void MarkShadowUpdate();
+	bool ShadowIsUpdated();
+
+	virtual void Render() override;
+	virtual void DepthRender() override;
+
+protected:
+	virtual DirectX::XMFLOAT4X4 TransformMatrix() override;
+	virtual DirectX::XMFLOAT4X4 InverseTransformMatrix() override;
+
+	void FlagModification();
+	virtual void OnModyfied() override;
+
+	virtual void StagingBuffersUpdate() = 0;
+
+	UINT mapResolution;
+	ID3D11Buffer* parameterStagingBuffer;
+	ID3D11Buffer* shadowProjectionStagingBuffer = nullptr;
+	ID3D11Texture2D* shadowmapTexture = nullptr;
+	ID3D11DepthStencilView* shadowmapDSV = nullptr;
+
+private:
+	bool modyfied = false;
+	bool castShadow;
+	UINT latestUpdate;
+};
+
+class SpotDirLightArray : public LightBase
+{
+public:
+	SpotDirLightArray(UINT lightCapacity, UINT shadowmapResolution, DepthRenderer& renderer, std::vector<LightBaseStaging*>* StagingLights);
+	~SpotDirLightArray();
+
+	virtual void Render() override;
+	virtual void DepthRender() override;
+
+	virtual void Bind() override;
+
+	UINT ShadowmapsResolution();
+
+protected:
+	virtual DirectX::XMFLOAT4X4 TransformMatrix() override;
+	virtual DirectX::XMFLOAT4X4 InverseTransformMatrix() override;
+
+private:
+	UINT lightCapacity;
+	UINT mapResolution;
+	DepthRenderer* shadowmapRenderer;
+
+	std::vector<LightBaseStaging*>* StagingLights;
+
+	ID3D11Buffer* parametersStructuredBuffer;
+	ID3D11ShaderResourceView* parametersSRV;
+
+	ID3D11Buffer* shadowProjectionsStructuredBuffer;
+	ID3D11ShaderResourceView* shadowProjectionsSRV;
+
+	ID3D11Texture2D* shadowmapArray;
+	ID3D11ShaderResourceView* shadowmapsSRV;
+};
+
+class SpotLightStaging : public LightBaseStaging
+{
+public:
+	SpotLightStaging(const std::array<float, 3>& diffuse, const std::array<float, 3>& specular, float lightFOV, float fallof);
+	void SetupShadowmapping(SpotDirLightArray& lightArray, float nearPlane, float farPlane);
+	virtual Camera* ShadowMapCamera() override;
+
+	void SetDiffuse(std::array<float, 3> lightDiffuse);
+	std::array<float, 3> Diffuse();
+	void SetSpecular(std::array<float, 3> lightSpecular);
+	std::array<float, 3> Specular();
+
+	void SetFOV(float lightFOV);
+	float FOV();
+	void SetFalloff(float falloff);
+	float Falloff();
+
+protected:
+	virtual void StagingBuffersUpdate() override;
+
+private:
+	std::array<float, 3> lightDiffuse;
+	std::array<float, 3> lightSpecular;
+
+	float lightFOV;
+	float fallof;
+
+	float nearPlane;
+	float farPlane;
+};
+
+class DirectionalLightStaging : public LightBaseStaging
+{
+public:
+	DirectionalLightStaging(const std::array<float, 3>& diffuse, const std::array<float, 3>& specular);
+	void SetupShadowmapping(SpotDirLightArray& lightArray, float viewWidth, float nearPlane, float farPlane);
+	virtual Camera* ShadowMapCamera() override;
+
+	void SetDiffuse(std::array<float, 3> lightDiffuse);
+	std::array<float, 3> Diffuse();
+	void SetSpecular(std::array<float, 3> lightSpecular);
+	std::array<float, 3> Specular();
+
+protected:
+	virtual void StagingBuffersUpdate() override;
+
+private:
+	std::array<float, 3> lightDiffuse;
+	std::array<float, 3> lightSpecular;
+
+	float viewWidth;
+	float nearPlane;
+	float farPlane;
 };

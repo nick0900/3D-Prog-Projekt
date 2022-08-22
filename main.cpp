@@ -125,7 +125,7 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInstance
 	huginSmoothNoHead.Rotate({ 0.0f, 0.0f, 0.0f }, OBJECT_TRANSFORM_SPACE_GLOBAL, OBJECT_TRANSFORM_REPLACE, OBJECT_ROTATION_UNIT_DEGREES);
 	huginSmoothNoHead.Translate({ 0.0f, 0.0f, 1.0f }, OBJECT_TRANSFORM_SPACE_GLOBAL, OBJECT_TRANSFORM_REPLACE);
 
-	huginSmoothNoHead.AddToQuadTree(&staticObjects);
+	//huginSmoothNoHead.AddToQuadTree(&staticObjects);
 
 	STDOBJMirror ico = STDOBJMirror("OBJ/IcoSphere.obj", HEIGHT, &reflectionRenderer, 0.1f, 20.0f);
 
@@ -217,32 +217,57 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInstance
 
 	//-------------------------------Lights--------------------------------//
 
-	//comment out push_back for any light you dont want to use
-
 	AmbientLight ambientLight = AmbientLight({0.2f, 0.2f, 0.2f});
 
 	sceneLights.push_back(&ambientLight);
 
-	DirectionalLight testDirectionalLight = DirectionalLight({ 0.5f, 0.5f, 0.5f }, { 0.5f, 0.5f, 0.5f });
+
+
+	std::vector<LightBaseStaging*> stagingLights;
+	SpotDirLightArray lightArray = SpotDirLightArray(4, 1000, shadowmapSingleRenderer, &stagingLights);
+	sceneLights.push_back(&lightArray);
+
+	
+	DirectionalLightStaging testDirectionalLight = DirectionalLightStaging({ 0.5f, 0.5f, 0.5f }, { 0.5f, 0.5f, 0.5f });
 
 	testDirectionalLight.Translate({ 10.0f, 10.0f, 5.0f }, OBJECT_TRANSFORM_SPACE_GLOBAL, OBJECT_TRANSFORM_REPLACE);
 	testDirectionalLight.Rotate({ 45.0f, -135.0f, 0.0f }, OBJECT_TRANSFORM_SPACE_GLOBAL, OBJECT_TRANSFORM_REPLACE, OBJECT_ROTATION_UNIT_DEGREES);
 
-	testDirectionalLight.CreateShadowMap(2000, 20.0f, 1.0f, 50.0f, &shadowmapSingleRenderer);
-	testDirectionalLight.SetCastShadows(true);
+	testDirectionalLight.SetupShadowmapping(lightArray, 20.0f, 1.0f, 50.0f);
+	testDirectionalLight.SetCastShadow(true);
 
-	sceneLights.push_back(&testDirectionalLight);
+	stagingLights.push_back(&testDirectionalLight);
 
+	DirectionalLightStaging testDirectionalLight2 = DirectionalLightStaging({ 0.5f, 0.5f, 0.5f }, { 0.5f, 0.5f, 0.5f });
+
+	testDirectionalLight2.Translate({ -10.0f, 10.0f, 5.0f }, OBJECT_TRANSFORM_SPACE_GLOBAL, OBJECT_TRANSFORM_REPLACE);
+	testDirectionalLight2.Rotate({ 45.0f, 135.0f, 0.0f }, OBJECT_TRANSFORM_SPACE_GLOBAL, OBJECT_TRANSFORM_REPLACE, OBJECT_ROTATION_UNIT_DEGREES);
+
+	testDirectionalLight2.SetupShadowmapping(lightArray, 20.0f, 1.0f, 50.0f);
+	testDirectionalLight2.SetCastShadow(true);
+
+	stagingLights.push_back(&testDirectionalLight2);
 	
-	SpotLight testSpotLight = SpotLight({ 1.0f, 1.0f, 1.0f }, { 1.0f, 1.0f, 1.0f }, 45.0f, 10.0f);
+	
+	SpotLightStaging testSpotLight = SpotLightStaging({ 1.0f, 1.0f, 1.0f }, { 1.0f, 1.0f, 1.0f }, 45.0f, 10.0f);
 
-	testSpotLight.CreateShadowMap(500, 5.0f, 30.0f, &shadowmapSingleRenderer);
-	testSpotLight.SetCastShadows(true);
+	testSpotLight.SetupShadowmapping(lightArray, 5.0f, 30.0f);
+	testSpotLight.SetCastShadow(true);
 	testSpotLight.Rotate({ 15.0f, 30.0f, 0.0f }, OBJECT_TRANSFORM_SPACE_GLOBAL, OBJECT_TRANSFORM_REPLACE, OBJECT_ROTATION_UNIT_DEGREES);
 	testSpotLight.Translate({ -5.0f, 6.0f, -7.0f }, OBJECT_TRANSFORM_SPACE_GLOBAL, OBJECT_TRANSFORM_REPLACE);
-
-	sceneLights.push_back(&testSpotLight);
 	
+	//stagingLights.push_back(&testSpotLight);
+
+	SpotLightStaging testSpotLight2 = SpotLightStaging({ 1.0f, 1.0f, 1.0f }, { 1.0f, 1.0f, 1.0f }, 45.0f, 10.0f);
+
+	testSpotLight2.SetupShadowmapping(lightArray, 5.0f, 30.0f);
+	testSpotLight2.SetCastShadow(true);
+	testSpotLight2.Rotate({ 15.0f, -30.0f, 0.0f }, OBJECT_TRANSFORM_SPACE_GLOBAL, OBJECT_TRANSFORM_REPLACE, OBJECT_ROTATION_UNIT_DEGREES);
+	testSpotLight2.Translate({ 5.0f, 6.0f, -7.0f }, OBJECT_TRANSFORM_SPACE_GLOBAL, OBJECT_TRANSFORM_REPLACE);
+
+	stagingLights.push_back(&testSpotLight2);
+
+
 	PointLight testPointLight = PointLight({0.5f, 0.5f, 0.5f}, {0.7f, 0.7f, 0.7f}, 10.0f);
 
 	testPointLight.CreateShadowMap(500, 2.0f, 70.0f, &shadowmapCubeRenderer);
@@ -251,7 +276,7 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInstance
 
 	testPointLight.SetCastShadows(true);
 
-	sceneLights.push_back(&testPointLight);
+	//sceneLights.push_back(&testPointLight);
 	
 	//----------------------------------------------------------------------//
 
@@ -296,7 +321,7 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInstance
 			previous = now;
 
 			//Reflection render
-			//ico.ReflectionRender();
+			ico.ReflectionRender();
 
 			CameraUpdate(mainCamera);
 			galaxy.UpdateParticles();
