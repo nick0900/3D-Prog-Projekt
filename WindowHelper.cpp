@@ -56,6 +56,10 @@ LRESULT CALLBACK WindowProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lPara
 		case 0x32: //2 key
 			Static::movementInput |= 0x200;
 			break;
+
+		case 0x33: //3 key
+			Static::movementInput |= 0x400;
+			break;
 		}
 		return 0;
 
@@ -100,6 +104,10 @@ LRESULT CALLBACK WindowProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lPara
 
 		case 0x32: //2 key
 			Static::movementInput &= 0xdff;
+			break;
+
+		case 0x33: //3 key
+			Static::movementInput &= 0xbff;
 			break;
 		}
 		return 0;

@@ -148,7 +148,13 @@ public:
 	CameraPerspectiveDebug(UINT widthPixels, UINT heightPixels, UINT topLeftX, UINT topLeftY, float FovAngleY, float NearZ, float FarZ, CameraPerspective* frustumCamera);
 
 	virtual void ViewFrustum(DirectX::BoundingFrustum& frustum) override;
+
+	void SetDebug(bool debugOn);
+	bool DebugOn();
+
 private:
+	bool debugOn;
+
 	CameraPerspective* frustumCamera;
 };
 

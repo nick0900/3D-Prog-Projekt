@@ -295,11 +295,36 @@ bool CameraOrthographic::CreateBuffers()
 	return true;
 }
 
-CameraPerspectiveDebug::CameraPerspectiveDebug(UINT widthPixels, UINT heightPixels, UINT topLeftX, UINT topLeftY, float FovAngleY, float NearZ, float FarZ, CameraPerspective* frustumCamera) : CameraPerspective( widthPixels, heightPixels, topLeftX, topLeftY, FovAngleY, NearZ, FarZ), frustumCamera(frustumCamera)
+CameraPerspectiveDebug::CameraPerspectiveDebug(UINT widthPixels, UINT heightPixels, UINT topLeftX, UINT topLeftY, float FovAngleY, float NearZ, float FarZ, CameraPerspective* frustumCamera) : 
+	CameraPerspective( widthPixels, heightPixels, topLeftX, topLeftY, FovAngleY, NearZ, FarZ), frustumCamera(frustumCamera)
 {
+	debugOn = false;
 }
 
 void CameraPerspectiveDebug::ViewFrustum(DirectX::BoundingFrustum& frustum)
 {
-	frustumCamera->ViewFrustum(frustum);
+	if (debugOn)
+	{
+		frustumCamera->ViewFrustum(frustum);
+	}
+	else
+	{
+		DirectX::XMMATRIX rotation = DirectX::XMMatrixRotationQuaternion(DirectX::XMLoadFloat4(&rotationQuaternion));
+
+		DirectX::XMMATRIX translation = DirectX::XMMatrixTranslation(position.x, position.y, position.z);
+
+		DirectX::XMMATRIX transform = rotation * translation;
+
+		viewFrustum.Transform(frustum, transform);
+	}
+}
+
+void CameraPerspectiveDebug::SetDebug(bool debugOn)
+{
+	this->debugOn = debugOn;
+}
+
+bool CameraPerspectiveDebug::DebugOn()
+{
+	return debugOn;
 }

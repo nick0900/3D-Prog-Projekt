@@ -95,13 +95,13 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInstance
 	quadtreeDemoCamera.Translate({ 0.0f, 6.0f, 0.0f }, OBJECT_TRANSFORM_SPACE_GLOBAL, OBJECT_TRANSFORM_REPLACE);
 
 
-	CameraPerspective mainCamera = CameraPerspective(WIDTH, HEIGHT, 0, 0, 70.0f, 0.1f, 70.0f); //use this camera to view the seen as usual
-	//CameraPerspectiveDebug mainCamera = CameraPerspectiveDebug(WIDTH, HEIGHT, 0, 0, 70.0f, 0.1f, 70.0f, &quadtreeDemoCamera); //use this camera to see outside the quadtreedemocamera frustum
+	CameraPerspectiveDebug mainCamera = CameraPerspectiveDebug(WIDTH, HEIGHT, 0, 0, 70.0f, 0.1f, 70.0f, &quadtreeDemoCamera); //use this camera to see outside the quadtreedemocamera frustum
 
 	mainCamera.Translate({ 3.0f, 6.0f, -5.0f }, OBJECT_TRANSFORM_SPACE_GLOBAL, OBJECT_TRANSFORM_REPLACE);
 	mainCamera.Rotate({ 30.0f, -30.0f, 0.0f }, OBJECT_TRANSFORM_SPACE_GLOBAL, OBJECT_TRANSFORM_REPLACE, OBJECT_ROTATION_UNIT_DEGREES);
 
 	//The main camera is controlled by wasd and the arrow keys
+	//press 3 to toggle quadtree demon
 
 	//---------------------------------------------------------------------//
 
@@ -256,7 +256,7 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInstance
 	testSpotLight.Rotate({ 15.0f, 30.0f, 0.0f }, OBJECT_TRANSFORM_SPACE_GLOBAL, OBJECT_TRANSFORM_REPLACE, OBJECT_ROTATION_UNIT_DEGREES);
 	testSpotLight.Translate({ -5.0f, 6.0f, -7.0f }, OBJECT_TRANSFORM_SPACE_GLOBAL, OBJECT_TRANSFORM_REPLACE);
 	
-	//stagingLights.push_back(&testSpotLight);
+	stagingLights.push_back(&testSpotLight);
 
 	SpotLightStaging testSpotLight2 = SpotLightStaging({ 1.0f, 1.0f, 1.0f }, { 1.0f, 1.0f, 1.0f }, 45.0f, 10.0f);
 
@@ -290,6 +290,9 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInstance
 	std::chrono::steady_clock timer;
 	std::chrono::time_point<std::chrono::steady_clock> previous = timer.now();
 
+	bool key3Hold = false;
+	bool secondaryCamera = false;
+
 	MSG msg = {};
 
 	while (msg.message != WM_QUIT)
@@ -303,8 +306,10 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInstance
 		Pipeline::Clean::UnorderedAccessView(backbufferUAV);
 		mainRenderer.CameraDeferredRender(&mainCamera, backbufferUAV);
 		
-		//uncomment to render the quadtree demonstration camera
-		//mainRenderer.CameraDeferredRender(&quadtreeDemoCamera, backbufferUAV);
+		if (secondaryCamera)
+		{
+			mainRenderer.CameraDeferredRender(&quadtreeDemoCamera, backbufferUAV);
+		}
 		
 		Pipeline::Switch();
 
@@ -337,6 +342,20 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInstance
 			if ((input & 0x200) > 0) //2 key
 			{
 				galaxy.AddParticles();
+			}
+			if ((input & 0x400) > 0) //3 key
+			{
+				if (!key3Hold)
+				{
+					key3Hold = true;
+					
+					secondaryCamera = !secondaryCamera;
+					mainCamera.SetDebug(!mainCamera.DebugOn());
+				}
+			}
+			else
+			{
+				key3Hold = false;
 			}
 		}
 	}

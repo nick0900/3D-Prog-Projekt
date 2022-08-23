@@ -190,29 +190,18 @@ void main( uint3 pixelCoords : SV_DispatchThreadID )
             
                 shadowFactor = ((LightArrayShadowmaps.SampleLevel(borderSampler, sampleTex, 0.0f).r + shadowBias) < lightSpacePosition.z) ? 0.0f : 1.0f;
             }
-            switch (parameters.lightType)
-            {
-                case 0: //spotlight
-                    lightPath = parameters.position - pixelPosition.xyz;
-                    lightPath = normalize(lightPath);
             
-                    float spotFactor = (dot(lightPath, parameters.direction) < parameters.lightFOV) ? 0.0f : 1.0f;
+            lightPath = parameters.lightType == 0 ? parameters.position - pixelPosition.xyz : parameters.direction;
+            float fallofFactor = max(spotFalloff != 0.0f ? (spotFalloff - length(lightPath)) / spotFalloff : 1.0f, 0.0f);
+            lightPath = normalize(lightPath);
+            
+            float spotFactor = (parameters.lightType == 0) && (dot(lightPath, parameters.direction) < parameters.lightFOV) ? 0.0f : 1.0f;
 
-                    diffuseColor = spotFactor * (parameters.falloff - length(lightPath)) / parameters.falloff * diffuseAlbedo * parameters.diffuse * max(0.0f, dot(normal, lightPath));
+            diffuseColor = spotFactor * fallofFactor * diffuseAlbedo * parameters.diffuse * max(0.0f, dot(normal, lightPath));
             
-                    reflected = normalize(reflect(lightPath, normal));
-                    cameraPath = normalize(cameraPath);
-                    specularColor = spotFactor * specularAlbedo * parameters.specular * pow(max(0.0f, dot(reflected, cameraPath)), shinyness);
-                    break;
-                
-                case 1: //directionallight
-                    diffuseColor = diffuseAlbedo * parameters.diffuse * max(0.0f, dot(normal, parameters.direction));
-            
-                    reflected = normalize(reflect(parameters.direction, normal));
-                    cameraPath = normalize(cameraPath);
-                    specularColor = specularAlbedo * parameters.specular * pow(max(0.0f, dot(reflected, cameraPath)), shinyness);
-                    break;
-            }
+            reflected = normalize(reflect(lightPath, normal));
+            cameraPath = normalize(cameraPath);
+            specularColor = spotFactor * specularAlbedo * parameters.specular * pow(max(0.0f, dot(reflected, cameraPath)), shinyness);
     
             float4 pixelColor = float4((diffuseColor + specularColor) * shadowFactor, 1.0f);
     
@@ -244,8 +233,11 @@ void main( uint3 pixelCoords : SV_DispatchThreadID )
     {
         case 1://pointlight
             lightPath = pointPosition - pixelPosition.xyz;
+            float pointFallofFactor = max(pointFalloff != 0.0f ? (pointFalloff - length(lightPath)) / pointFalloff : 1.0f, 0.0f);
+            
             lightPath = normalize(lightPath);
-            diffuseColor = (pointFalloff - length(lightPath)) / pointFalloff * diffuseAlbedo * pointDiffuse * max(0.0f, dot(normal, lightPath));
+            
+            diffuseColor = pointFallofFactor * diffuseAlbedo * pointDiffuse * max(0.0f, dot(normal, lightPath));
             
             reflected = normalize(reflect(lightPath, normal));
             cameraPath = normalize(cameraPath);
@@ -262,11 +254,12 @@ void main( uint3 pixelCoords : SV_DispatchThreadID )
         
         case 3://spotlight
             lightPath = spotPosition - pixelPosition.xyz;
+            float spotFallofFactor = max(spotFalloff != 0.0f ? (spotFalloff - length(lightPath)) / spotFalloff : 1.0f, 0.0f);
             lightPath = normalize(lightPath);
             
             float spotFactor = (dot(lightPath, spotDirection) < spotLightFOV) ? 0.0f : 1.0f;
 
-            diffuseColor = spotFactor * (spotFalloff - length(lightPath)) / spotFalloff * diffuseAlbedo * spotDiffuse * max(0.0f, dot(normal, lightPath));
+            diffuseColor = spotFactor * spotFallofFactor * diffuseAlbedo * spotDiffuse * max(0.0f, dot(normal, lightPath));
             
             reflected = normalize(reflect(lightPath, normal));
             cameraPath = normalize(cameraPath);
