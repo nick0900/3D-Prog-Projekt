@@ -138,7 +138,7 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInstance
 	Galaxy galaxy = Galaxy("textures/star.png");
 	particleSystems.push_back(&galaxy);
 
-	galaxy.InitializeParticles(3000);
+	galaxy.InitializeParticles(100000);
 
 	galaxy.Translate({ 0.0f, 8.0f, 0.0f }, OBJECT_TRANSFORM_SPACE_GLOBAL, OBJECT_TRANSFORM_REPLACE);
 	
@@ -163,7 +163,7 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInstance
 
 			cornerCubes[index]->Translate({-50.0f + i * 12.5f, 0.0f, -50.0f + j * 12.5f }, OBJECT_TRANSFORM_SPACE_GLOBAL, OBJECT_TRANSFORM_REPLACE);
 
-			cornerCubes[index]->AddToQuadTree(&staticObjects);
+			//cornerCubes[index]->AddToQuadTree(&staticObjects);
 		}
 	}
 
@@ -184,7 +184,7 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInstance
 	hugin.Rotate({ 0.0f, 180.0f, 0.0f }, OBJECT_TRANSFORM_SPACE_GLOBAL, OBJECT_TRANSFORM_REPLACE, OBJECT_ROTATION_UNIT_DEGREES);
 	hugin.Translate({ 10.0f, 0.0f, 0.0f }, OBJECT_TRANSFORM_SPACE_GLOBAL, OBJECT_TRANSFORM_REPLACE);
 
-	dynamicObjects.push_back(&hugin);
+	//dynamicObjects.push_back(&hugin);
 
 	//another showcase of tesselation but the head is also tesselated and smooth shaded
 	STDOBJTesselated huginSmooth = STDOBJTesselated("OBJ/Hugin smooth.obj", 8.0f, 5.0f, 0.0f, 0.75f);
@@ -201,7 +201,7 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInstance
 	cube.Translate({ 0.0f, -1.0f, 0.0f }, OBJECT_TRANSFORM_SPACE_GLOBAL, OBJECT_TRANSFORM_REPLACE);
 	cube.Scale({ 10.0f, 0.05f, 10.0f }, OBJECT_TRANSFORM_SPACE_GLOBAL, OBJECT_TRANSFORM_REPLACE);
 
-	cube.AddToQuadTree(&staticObjects);
+	//cube.AddToQuadTree(&staticObjects);
 
 	//---------------------------------------------------------------------//
 
@@ -219,13 +219,13 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInstance
 
 	AmbientLight ambientLight = AmbientLight({0.2f, 0.2f, 0.2f});
 
-	sceneLights.push_back(&ambientLight);
+	//sceneLights.push_back(&ambientLight);
 
 
 
 	std::vector<LightBaseStaging*> stagingLights;
 	SpotDirLightArray lightArray = SpotDirLightArray(4, 1000, shadowmapSingleRenderer, &stagingLights);
-	sceneLights.push_back(&lightArray);
+	//sceneLights.push_back(&lightArray);
 
 	
 	DirectionalLightStaging testDirectionalLight = DirectionalLightStaging({ 0.5f, 0.5f, 0.5f }, { 0.5f, 0.5f, 0.5f });
@@ -236,7 +236,7 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInstance
 	testDirectionalLight.SetupShadowmapping(lightArray, 20.0f, 1.0f, 50.0f);
 	testDirectionalLight.SetCastShadow(true);
 
-	stagingLights.push_back(&testDirectionalLight);
+	//stagingLights.push_back(&testDirectionalLight);
 
 	DirectionalLightStaging testDirectionalLight2 = DirectionalLightStaging({ 0.5f, 0.5f, 0.5f }, { 0.5f, 0.5f, 0.5f });
 
@@ -246,7 +246,7 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInstance
 	testDirectionalLight2.SetupShadowmapping(lightArray, 20.0f, 1.0f, 50.0f);
 	testDirectionalLight2.SetCastShadow(true);
 
-	stagingLights.push_back(&testDirectionalLight2);
+	//stagingLights.push_back(&testDirectionalLight2);
 	
 	
 	SpotLightStaging testSpotLight = SpotLightStaging({ 1.0f, 1.0f, 1.0f }, { 1.0f, 1.0f, 1.0f }, 45.0f, 10.0f);
@@ -256,7 +256,7 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInstance
 	testSpotLight.Rotate({ 15.0f, 30.0f, 0.0f }, OBJECT_TRANSFORM_SPACE_GLOBAL, OBJECT_TRANSFORM_REPLACE, OBJECT_ROTATION_UNIT_DEGREES);
 	testSpotLight.Translate({ -5.0f, 6.0f, -7.0f }, OBJECT_TRANSFORM_SPACE_GLOBAL, OBJECT_TRANSFORM_REPLACE);
 	
-	stagingLights.push_back(&testSpotLight);
+	//stagingLights.push_back(&testSpotLight);
 
 	SpotLightStaging testSpotLight2 = SpotLightStaging({ 1.0f, 1.0f, 1.0f }, { 1.0f, 1.0f, 1.0f }, 45.0f, 10.0f);
 
@@ -265,7 +265,7 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInstance
 	testSpotLight2.Rotate({ 15.0f, -30.0f, 0.0f }, OBJECT_TRANSFORM_SPACE_GLOBAL, OBJECT_TRANSFORM_REPLACE, OBJECT_ROTATION_UNIT_DEGREES);
 	testSpotLight2.Translate({ 5.0f, 6.0f, -7.0f }, OBJECT_TRANSFORM_SPACE_GLOBAL, OBJECT_TRANSFORM_REPLACE);
 
-	stagingLights.push_back(&testSpotLight2);
+	//stagingLights.push_back(&testSpotLight2);
 
 
 	PointLight testPointLight = PointLight({0.5f, 0.5f, 0.5f}, {0.7f, 0.7f, 0.7f}, 10.0f);
