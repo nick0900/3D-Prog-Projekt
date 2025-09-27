@@ -1,6 +1,11 @@
 #include "WindowHelper.h"
 #include <iostream>
 
+namespace Static
+{
+	UINT movementInput;
+}
+
 LRESULT CALLBACK WindowProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 {
 	switch (message)
@@ -8,6 +13,105 @@ LRESULT CALLBACK WindowProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lPara
 	case WM_DESTROY:
 		PostQuitMessage(0);
 		return 0;
+		
+	case WM_KEYDOWN:
+		switch (wParam)
+		{
+		case 0x57: //w
+			Static::movementInput |= 0x01;
+			break;
+
+		case 0x41: //a
+			Static::movementInput |= 0x02;
+			break;
+
+		case 0x53: //s
+			Static::movementInput |= 0x04;
+			break;
+
+		case 0x44: //d
+			Static::movementInput |= 0x08;
+			break;
+
+		case VK_UP: //up arrow
+			Static::movementInput |= 0x10;
+			break;
+
+		case VK_LEFT: //left arrow
+			Static::movementInput |= 0x20;
+			break;
+
+		case VK_DOWN: //down arrow
+			Static::movementInput |= 0x40;
+			break;
+
+		case VK_RIGHT: //right arrow
+			Static::movementInput |= 0x80;
+			break;
+
+		case 0x31: //1 key
+			Static::movementInput |= 0x100;
+			break;
+
+		case 0x32: //2 key
+			Static::movementInput |= 0x200;
+			break;
+
+		case 0x33: //3 key
+			Static::movementInput |= 0x400;
+			break;
+		}
+		return 0;
+
+	case WM_KEYUP:
+		switch (wParam)
+		{
+		case 0x57: //w
+			Static::movementInput &= 0xffe;
+			break;
+
+		case 0x41: //a
+			Static::movementInput &= 0xffd;
+			break;
+
+		case 0x53: //s
+			Static::movementInput &= 0xffb;
+			break;
+
+		case 0x44: //d
+			Static::movementInput &= 0xff7;
+			break;
+
+		case VK_UP: //up arrow
+			Static::movementInput &= 0xfef;
+			break;
+
+		case VK_LEFT: //left arrow
+			Static::movementInput &= 0xfdf;
+			break;
+
+		case VK_DOWN: //down arrow
+			Static::movementInput &= 0xfbf;
+			break;
+
+		case VK_RIGHT: //right arrow
+			Static::movementInput &= 0xf7f;
+			break;
+
+		case 0x31: //1 key
+			Static::movementInput &= 0xeff;
+			break;
+
+		case 0x32: //2 key
+			Static::movementInput &= 0xdff;
+			break;
+
+		case 0x33: //3 key
+			Static::movementInput &= 0xbff;
+			break;
+		}
+		return 0;
+
 	default:
 		break;
 	}
@@ -37,4 +141,9 @@ bool SetupWindow(HINSTANCE instance, UINT width, UINT height, int nCmdShow, HWND
 	ShowWindow(window, nCmdShow);
 
 	return true;
+}
+
+UINT GetInputTracker()
+{
+	return Static::movementInput;
 }

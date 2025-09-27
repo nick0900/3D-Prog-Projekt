@@ -45,6 +45,12 @@
     <ClCompile Include="Lights.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="QuadTree.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="ParticleSystems.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="WindowHelper.h">
@@ -77,6 +83,12 @@
     <ClInclude Include="Lights.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="QuadTree.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="ParticleSystems.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <FxCompile Include="VSMeshGeometryPass.hlsl">
@@ -85,13 +97,49 @@
     <FxCompile Include="PSParameterGeometryPass.hlsl">
       <Filter>Header Files</Filter>
     </FxCompile>
-    <FxCompile Include="VSParticleGeometryPass.hlsl">
-      <Filter>Header Files</Filter>
-    </FxCompile>
-    <FxCompile Include="CSLightPass.hlsl">
+    <FxCompile Include="CSLightPass32x32.hlsl">
       <Filter>Header Files</Filter>
     </FxCompile>
     <FxCompile Include="PSTexturedGeometryPass.hlsl">
+      <Filter>Header Files</Filter>
+    </FxCompile>
+    <FxCompile Include="PSDistanceWrite.hlsl">
+      <Filter>Header Files</Filter>
+    </FxCompile>
+    <FxCompile Include="VSMeshGeometryPassTesselated.hlsl">
+      <Filter>Header Files</Filter>
+    </FxCompile>
+    <FxCompile Include="HSMeshGeometryPass.hlsl">
+      <Filter>Header Files</Filter>
+    </FxCompile>
+    <FxCompile Include="DSMeshGeometryPass.hlsl">
+      <Filter>Header Files</Filter>
+    </FxCompile>
+    <FxCompile Include="PSCubemapGeometryPass.hlsl">
+      <Filter>Header Files</Filter>
+    </FxCompile>
+    <FxCompile Include="VSMeshGeometryPassCubemap.hlsl">
+      <Filter>Header Files</Filter>
+    </FxCompile>
+    <FxCompile Include="CSGalaxyUpdate32.hlsl">
+      <Filter>Header Files</Filter>
+    </FxCompile>
+    <FxCompile Include="CSGalaxyAdd1.hlsl">
+      <Filter>Header Files</Filter>
+    </FxCompile>
+    <FxCompile Include="CSGalaxyRemove1.hlsl">
+      <Filter>Header Files</Filter>
+    </FxCompile>
+    <FxCompile Include="VSParticlePoints.hlsl">
+      <Filter>Header Files</Filter>
+    </FxCompile>
+    <FxCompile Include="GSParticleBillBoarded.hlsl">
+      <Filter>Header Files</Filter>
+    </FxCompile>
+    <FxCompile Include="PSGalaxyParticles.hlsl">
+      <Filter>Header Files</Filter>
+    </FxCompile>
+    <FxCompile Include="CSColorPass32x32.hlsl">
       <Filter>Header Files</Filter>
     </FxCompile>
   </ItemGroup>

@@ -1,5 +1,6 @@
 #include <Windows.h>
 #include <iostream>
+#include <DirectXCollision.h>
 
 #include "Renderer.h"
 
@@ -9,41 +10,152 @@
 #include "Lights.h"
 
 
-
-Renderer::Renderer(std::vector<Object*>* sceneObjects, std::vector<Camera*>* renderCameras, std::vector<LightBase*>* sceneLights) :
-	backBufferRTV(nullptr), 
-	backBufferUAV(nullptr), 
-	dsTexture(nullptr), 
-	dsView(nullptr), 
-	depthSRV(nullptr),
-	
-	gBufferNormal(nullptr), 
-	gBufferAmbient(nullptr),
-	gBufferDiffuse(nullptr),
-	gBufferSpecular(nullptr),
-
-	normalRTV(nullptr),
-	ambientRTV(nullptr),
-	diffuseRTV(nullptr),
-	specularRTV(nullptr),
-
-	normalSRV(nullptr),
-	ambientSRV(nullptr),
-	diffuseSRV(nullptr),
-	specularSRV(nullptr),
-
-	renderCameras(renderCameras),
-	sceneObjects(sceneObjects),
-	sceneLights(sceneLights)
+DepthRenderer::DepthRenderer(std::vector<Object*>* dynamicObjects, QuadTree** staticObjects) : dynamicObjects(dynamicObjects), staticObjects(staticObjects)
 {
-	CreateBackBufferViews();
+}
+
+void DepthRenderer::CameraDepthRender(ID3D11DepthStencilView* dsv, Camera* view)
+{
+	Pipeline::ShadowMapping::ClearPixelShader();
+
+	view->SetActiveCamera();
+
+	Pipeline::Clean::DepthStencilView(dsv);
+	Pipeline::ShadowMapping::BindDepthStencil(dsv);
+
+	for (Object* object : *dynamicObjects)
+	{
+		object->DepthRender();
+	}
+
+	DirectX::BoundingFrustum viewFrustum;
+	view->ViewFrustum(viewFrustum);
+	std::vector<Object*> containedStaticObjects;
+	(*staticObjects)->GetContainedInFrustum(&viewFrustum, containedStaticObjects);
+	for (Object* object : containedStaticObjects)
+	{
+		object->DepthRender();
+	}
+
+	Pipeline::ShadowMapping::UnbindDepthStencil();
+}
+
+OmniDistanceRenderer::OmniDistanceRenderer(UINT resolution, std::vector<Object*>* dynamicObjects, QuadTree** staticObjects) : resolution(resolution), dynamicObjects(dynamicObjects), staticObjects(staticObjects)
+{
+	D3D11_TEXTURE2D_DESC textureDesc;
+	textureDesc.MipLevels = 1;
+	textureDesc.ArraySize = 1;
+	textureDesc.Format = DXGI_FORMAT_R24G8_TYPELESS;
+	textureDesc.SampleDesc.Count = 1;
+	textureDesc.SampleDesc.Quality = 0;
+	textureDesc.Usage = D3D11_USAGE_DEFAULT;
+	textureDesc.BindFlags = D3D11_BIND_DEPTH_STENCIL | D3D11_BIND_SHADER_RESOURCE;
+	textureDesc.CPUAccessFlags = 0;
+	textureDesc.MiscFlags = 0;
+	textureDesc.Width = resolution;
+	textureDesc.Height = resolution;
+
+	if (FAILED(Pipeline::Device()->CreateTexture2D(&textureDesc, nullptr, &dsTexture)))
+	{
+		std::cerr << "Failed to set up depth stencil texture" << std::endl;
+	}
+
+	D3D11_DEPTH_STENCIL_VIEW_DESC dsvDesc;
+	dsvDesc.Format = DXGI_FORMAT_D24_UNORM_S8_UINT;
+	dsvDesc.ViewDimension = D3D11_DSV_DIMENSION_TEXTURE2D;
+	dsvDesc.Flags = 0;
+	D3D11_TEX2D_DSV texDSV;
+	texDSV.MipSlice = 0;
+	dsvDesc.Texture2D = texDSV;
+
+	if (FAILED(Pipeline::Device()->CreateDepthStencilView(dsTexture, &dsvDesc, &dsView)))
+	{
+		std::cerr << "Error: Failed to set up DSV" << std::endl;
+	}
+}
+
+OmniDistanceRenderer::~OmniDistanceRenderer()
+{
+	dsTexture->Release();
+	dsView->Release();
+}
+
+void OmniDistanceRenderer::OmniDistanceRender(ID3D11RenderTargetView* rtv[6], Camera* view)
+{
+	view->Rotate({ 0.0f, 90.0f, 0.0f }, OBJECT_TRANSFORM_SPACE_GLOBAL, OBJECT_TRANSFORM_REPLACE, OBJECT_ROTATION_UNIT_DEGREES);
+	view->UpdateTransformBuffer();
+
+	CameraDistanceRender(rtv[0], view);
+
+	view->Rotate({ 0.0f, -90.0f, 0.0f }, OBJECT_TRANSFORM_SPACE_GLOBAL, OBJECT_TRANSFORM_REPLACE, OBJECT_ROTATION_UNIT_DEGREES);
+	view->UpdateTransformBuffer();
+
+	CameraDistanceRender(rtv[1], view);
+
+	view->Rotate({ -90.0f, 0.0f, 0.0f }, OBJECT_TRANSFORM_SPACE_GLOBAL, OBJECT_TRANSFORM_REPLACE, OBJECT_ROTATION_UNIT_DEGREES);
+	view->UpdateTransformBuffer();
+
+	CameraDistanceRender(rtv[2], view);
+
+	view->Rotate({ 90.0f, 0.0f, 0.0f }, OBJECT_TRANSFORM_SPACE_GLOBAL, OBJECT_TRANSFORM_REPLACE, OBJECT_ROTATION_UNIT_DEGREES);
+	view->UpdateTransformBuffer();
+
+	CameraDistanceRender(rtv[3], view);
+
+	view->Rotate({ 0.0f, 0.0f, 0.0f }, OBJECT_TRANSFORM_SPACE_GLOBAL, OBJECT_TRANSFORM_REPLACE, OBJECT_ROTATION_UNIT_DEGREES);
+	view->UpdateTransformBuffer();
+
+	CameraDistanceRender(rtv[4], view);
+
+	view->Rotate({ 0.0f, 180.0f, 0.0f }, OBJECT_TRANSFORM_SPACE_GLOBAL, OBJECT_TRANSFORM_REPLACE, OBJECT_ROTATION_UNIT_DEGREES);
+	view->UpdateTransformBuffer();
+
+	CameraDistanceRender(rtv[5], view);
+}
+
+UINT OmniDistanceRenderer::Resolution()
+{
+	return resolution;
+}
+
+void OmniDistanceRenderer::CameraDistanceRender(ID3D11RenderTargetView* rtv, Camera* view)
+{
+	view->SetActiveCamera();
+
+	Pipeline::Clean::DepthStencilView(dsView);
+	Pipeline::ShadowMapping::BindDistanceBuffer(rtv, dsView);
+
+	for (Object* object : *dynamicObjects)
+	{
+		object->DepthRender();
+	}
+
+	DirectX::BoundingFrustum viewFrustum;
+	view->ViewFrustum(viewFrustum);
+	std::vector<Object*> containedStaticObjects;
+	(*staticObjects)->GetContainedInFrustum(&viewFrustum, containedStaticObjects);
+	for (Object* object : containedStaticObjects)
+	{
+		object->DepthRender();
+	}
+
+	Pipeline::ShadowMapping::UnbindDistanceBuffer();
+}
+
+DeferredRenderer::DeferredRenderer(UINT widthRes, UINT heightRes, std::vector<Object*>* dynamicObjects, QuadTree** staticObjects, std::vector<LightBase*>* sceneLights, std::vector<ParticleSystem*>* particles) :
+widthRes(widthRes),
+heightRes(heightRes),
+dynamicObjects(dynamicObjects),
+staticObjects(staticObjects),
+sceneLights(sceneLights),
+particles(particles)
+{
+	CreateDepthStencil();
 	DeferredSetup();
 }
 
-Renderer::~Renderer()
+DeferredRenderer::~DeferredRenderer()
 {
-	backBufferRTV->Release();
-	backBufferUAV->Release();
 	dsTexture->Release();
 	dsView->Release();
 	depthSRV->Release();
@@ -64,39 +176,100 @@ Renderer::~Renderer()
 	specularSRV->Release();
 }
 
-void Renderer::Render()
+void DeferredRenderer::CameraDeferredRender(Camera* renderView, ID3D11UnorderedAccessView* targetUAV)
 {
-	ShadowMapUpdate();
-	ReflectionUpdate();
+	renderView->SetActiveCamera();
 
-	lightBinder.Bind();
+	Pipeline::Clean::DepthStencilView(dsView);
+	Pipeline::Clean::RenderTargetView(normalRTV);
+	Pipeline::Clean::RenderTargetView(ambientRTV);
+	Pipeline::Clean::RenderTargetView(diffuseRTV);
+	Pipeline::Clean::RenderTargetView(specularRTV);
 
-	for (Camera* camera : *renderCameras)
+	Pipeline::Deferred::GeometryPass::PixelShader::Bind::GBuffers(normalRTV, ambientRTV, diffuseRTV, specularRTV, dsView);
+
+	for (Object* object : *dynamicObjects)
 	{
-		CameraDeferredRender(camera);
+		object->Render();
 	}
-}
 
-void Renderer::Switch()
-{
-	Pipeline::Switch();
-}
+	DirectX::BoundingFrustum viewFrustum;
+	renderView->ViewFrustum(viewFrustum);
+	std::vector<Object*> containedStaticObjects;
+	(*staticObjects)->GetContainedInFrustum(&viewFrustum, containedStaticObjects);
+	for (Object* object : containedStaticObjects)
+	{
+		object->Render();
+	}
 
-void Renderer::LightSetup()
-{
-	lightBinder.ClearLights();
+	for (ParticleSystem* partSys : *particles)
+	{
+		partSys->Render();
+	}
+
+	Pipeline::Deferred::GeometryPass::PixelShader::Clear::GBuffers();
+
+	Pipeline::Deferred::LightPass::ComputeShader::Bind::BackBufferUAV(targetUAV);
+
+	Pipeline::Deferred::LightPass::ComputeShader::Bind::DepthBuffer(depthSRV);
+	Pipeline::Deferred::LightPass::ComputeShader::Bind::NormalBuffer(normalSRV);
+	Pipeline::Deferred::LightPass::ComputeShader::Bind::AmbientBuffer(ambientSRV);
+	Pipeline::Deferred::LightPass::ComputeShader::Bind::DiffuesBuffer(diffuseSRV);
+	Pipeline::Deferred::LightPass::ComputeShader::Bind::SpecularBuffer(specularSRV);
+
 	for (LightBase* light : *sceneLights)
 	{
-		lightBinder.AddLight(light);
+		light->Bind();
+		renderView->SetActiveCamera();
+		Pipeline::Deferred::LightPass::ComputeShader::Settings::BindBuffer();
+		Pipeline::Deferred::LightPass::ComputeShader::Dispatch32X32(renderView->ViewportWidth(), renderView->ViewportHeight(), renderView->ViewportTopLeftX(), renderView->ViewportTopLeftY());
 	}
+
+	Pipeline::Deferred::LightPass::ComputeShader::ColorDispatch32X32(renderView->ViewportWidth(), renderView->ViewportHeight(), renderView->ViewportTopLeftX(), renderView->ViewportTopLeftY());
+
+	Pipeline::Deferred::LightPass::ComputeShader::Clear::ComputeSRVs();
+	Pipeline::Deferred::LightPass::ComputeShader::Clear::TargetUAV();
 }
 
-bool Renderer::DeferredSetup()
+void DeferredRenderer::OmniCameraDeferredRender(Camera* renderView, ID3D11UnorderedAccessView* targetUAVs[6])
+{
+	renderView->Rotate({ 0.0f, 90.0f, 0.0f }, OBJECT_TRANSFORM_SPACE_GLOBAL, OBJECT_TRANSFORM_REPLACE, OBJECT_ROTATION_UNIT_DEGREES);
+	renderView->UpdateTransformBuffer();
+
+	CameraDeferredRender(renderView, targetUAVs[0]);
+
+	renderView->Rotate({ 0.0f, -90.0f, 0.0f }, OBJECT_TRANSFORM_SPACE_GLOBAL, OBJECT_TRANSFORM_REPLACE, OBJECT_ROTATION_UNIT_DEGREES);
+	renderView->UpdateTransformBuffer();
+
+	CameraDeferredRender(renderView, targetUAVs[1]);
+
+	renderView->Rotate({ -90.0f, 0.0f, 0.0f }, OBJECT_TRANSFORM_SPACE_GLOBAL, OBJECT_TRANSFORM_REPLACE, OBJECT_ROTATION_UNIT_DEGREES);
+	renderView->UpdateTransformBuffer();
+
+	CameraDeferredRender(renderView, targetUAVs[2]);
+
+	renderView->Rotate({ 90.0f, 0.0f, 0.0f }, OBJECT_TRANSFORM_SPACE_GLOBAL, OBJECT_TRANSFORM_REPLACE, OBJECT_ROTATION_UNIT_DEGREES);
+	renderView->UpdateTransformBuffer();
+
+	CameraDeferredRender(renderView, targetUAVs[3]);
+
+	renderView->Rotate({ 0.0f, 0.0f, 0.0f }, OBJECT_TRANSFORM_SPACE_GLOBAL, OBJECT_TRANSFORM_REPLACE, OBJECT_ROTATION_UNIT_DEGREES);
+	renderView->UpdateTransformBuffer();
+
+	CameraDeferredRender(renderView, targetUAVs[4]);
+
+	renderView->Rotate({ 0.0f, 180.0f, 0.0f }, OBJECT_TRANSFORM_SPACE_GLOBAL, OBJECT_TRANSFORM_REPLACE, OBJECT_ROTATION_UNIT_DEGREES);
+	renderView->UpdateTransformBuffer();
+
+	CameraDeferredRender(renderView, targetUAVs[5]);
+}
+
+bool DeferredRenderer::DeferredSetup()
 {
 	D3D11_TEXTURE2D_DESC textureDesc;
 
-	textureDesc.Width = Pipeline::BackBufferWidth();
-	textureDesc.Height = Pipeline::BackBufferHeight();
+	textureDesc.Width = widthRes;
+	textureDesc.Height = heightRes;
 	textureDesc.MipLevels = 1;
 	textureDesc.ArraySize = 1;
 	textureDesc.Format = DXGI_FORMAT_R32G32B32A32_FLOAT;
@@ -123,7 +296,7 @@ bool Renderer::DeferredSetup()
 	{
 		return false;
 	}
-	
+
 
 
 	textureDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
@@ -180,172 +353,12 @@ bool Renderer::DeferredSetup()
 	return true;
 }
 
-void Renderer::CameraDeferredRender(Camera* renderView)
+bool DeferredRenderer::CreateDepthStencil()
 {
-	renderView->SetActiveCamera();
-
-	Pipeline::Deferred::GeometryPass::Clear::DepthStencilView(dsView);
-	Pipeline::Deferred::GeometryPass::PixelShader::Bind::GBuffers(normalRTV, ambientRTV, diffuseRTV, specularRTV, dsView);
-
-	for (Object* object : *sceneObjects)
-	{
-		object->Render();
-	}
-
-	Pipeline::Deferred::GeometryPass::PixelShader::Clear::GBuffers();
-
-	SharedResources::BindComputeShader(SharedResources::cShader::standard);
-
-	Pipeline::Deferred::LightPass::ComputeShader::Bind::DepthBuffer(depthSRV);
-	Pipeline::Deferred::LightPass::ComputeShader::Bind::NormalBuffer(normalSRV);
-	Pipeline::Deferred::LightPass::ComputeShader::Bind::AmbientBuffer(ambientSRV);
-	Pipeline::Deferred::LightPass::ComputeShader::Bind::DiffuesBuffer(diffuseSRV);
-	Pipeline::Deferred::LightPass::ComputeShader::Bind::SpecularBuffer(specularSRV);
-
-	Pipeline::Deferred::LightPass::ComputeShader::Bind::BackBufferUAV(backBufferUAV);
-
-	Pipeline::Deferred::LightPass::ComputeShader::Dispatch32X18(renderView->ViewportWidth(), renderView->ViewportHeight(), renderView->ViewportTopLeftX(), renderView->ViewportTopLeftY());
-
-	Pipeline::Deferred::LightPass::ComputeShader::Clear::ComputeSRVs();
-}
-
-void Renderer::CameraDepthMapRender(ID3D11DepthStencilView** mapDSV, Camera* view, MappingMode mode)
-{
-	Pipeline::ShadowMapping::ClearForShadowMapping();
-
-	view->SetActiveCamera();
-
-	switch (mode)
-	{
-	case SingleMap:
-		Pipeline::ShadowMapping::BindDepthStancils(*mapDSV);
-
-		for (Object* object : *sceneObjects)
-		{
-			object->DepthRender();
-		}
-		break;
-	
-	case DoubleMap:
-		Pipeline::ShadowMapping::BindDepthStancils(mapDSV[0]);
-
-		for (Object* object : *sceneObjects)
-		{
-			object->DepthRender();
-		}
-
-		view->Rotate({ 0.0f, 180.0f, 0.0f }, OBJECT_TRANSFORM_SPACE_LOCAL, OBJECT_TRANSFORM_APPEND, OBJECT_ROTATION_UNIT_DEGREES);
-		view->UpdateTransformBuffer();
-
-		Pipeline::ShadowMapping::BindDepthStancils(mapDSV[1]);
-
-		for (Object* object : *sceneObjects)
-		{
-			object->DepthRender();
-		}
-		
-		break;
-
-	case CubeMap:
-		view->Rotate({ 0.0f, 90.0f, 0.0f }, OBJECT_TRANSFORM_SPACE_GLOBAL, OBJECT_TRANSFORM_REPLACE, OBJECT_ROTATION_UNIT_DEGREES);
-		view->UpdateTransformBuffer();
-
-		Pipeline::ShadowMapping::BindDepthStancils(mapDSV[0]);
-
-		for (Object* object : *sceneObjects)
-		{
-			object->DepthRender();
-		}
-
-		view->Rotate({ 0.0f, -90.0f, 0.0f }, OBJECT_TRANSFORM_SPACE_GLOBAL, OBJECT_TRANSFORM_REPLACE, OBJECT_ROTATION_UNIT_DEGREES);
-		view->UpdateTransformBuffer();
-
-		Pipeline::ShadowMapping::BindDepthStancils(mapDSV[1]);
-
-		for (Object* object : *sceneObjects)
-		{
-			object->DepthRender();
-		}
-
-		view->Rotate({ -90.0f, 0.0f, 0.0f }, OBJECT_TRANSFORM_SPACE_GLOBAL, OBJECT_TRANSFORM_REPLACE, OBJECT_ROTATION_UNIT_DEGREES);
-		view->UpdateTransformBuffer();
-
-		Pipeline::ShadowMapping::BindDepthStancils(mapDSV[2]);
-
-		for (Object* object : *sceneObjects)
-		{
-			object->DepthRender();
-		}
-
-		view->Rotate({ 90.0f, 0.0f, 0.0f }, OBJECT_TRANSFORM_SPACE_GLOBAL, OBJECT_TRANSFORM_REPLACE, OBJECT_ROTATION_UNIT_DEGREES);
-		view->UpdateTransformBuffer();
-
-		Pipeline::ShadowMapping::BindDepthStancils(mapDSV[3]);
-
-		for (Object* object : *sceneObjects)
-		{
-			object->DepthRender();
-		}
-
-		view->Rotate({ 0.0f, 0.0f, 0.0f }, OBJECT_TRANSFORM_SPACE_GLOBAL, OBJECT_TRANSFORM_REPLACE, OBJECT_ROTATION_UNIT_DEGREES);
-		view->UpdateTransformBuffer();
-
-		Pipeline::ShadowMapping::BindDepthStancils(mapDSV[4]);
-
-		for (Object* object : *sceneObjects)
-		{
-			object->DepthRender();
-		}
-
-		view->Rotate({ 0.0f, 180.0f, 0.0f }, OBJECT_TRANSFORM_SPACE_GLOBAL, OBJECT_TRANSFORM_REPLACE, OBJECT_ROTATION_UNIT_DEGREES);
-		view->UpdateTransformBuffer();
-
-		Pipeline::ShadowMapping::BindDepthStancils(mapDSV[5]);
-
-		for (Object* object : *sceneObjects)
-		{
-			object->DepthRender();
-		}
-		break;
-
-	default:
-		break;
-	}
-}
-
-void Renderer::ShadowMapUpdate()
-{
-	for (LightBase* light : *sceneLights)
-	{
-		if (light->CastShadows())
-		{
-			CameraDepthMapRender(light->ShadowmapDSVs(), light->ShadowMapCamera(), light->ShadowMappingMode());
-		}
-	}
-}
-
-void Renderer::ReflectionUpdate()
-{
-}
-
-bool Renderer::CreateBackBufferViews()
-{
-	if (!Pipeline::GetBackbufferRTV(backBufferRTV))
-	{
-		std::cerr << "Failed to create backbuffer render target view!" << std::endl;
-		return false;
-	}
-
-	if (!Pipeline::GetBackbufferUAV(backBufferUAV))
-	{
-		std::cerr << "Failed to create backbuffer unordered access view!" << std::endl;
-		return false;
-	}
-
 	D3D11_TEXTURE2D_DESC textureDesc;
 
-	textureDesc.Width = Pipeline::BackBufferWidth();
-	textureDesc.Height = Pipeline::BackBufferHeight();
+	textureDesc.Width = widthRes;
+	textureDesc.Height = heightRes;
 	textureDesc.MipLevels = 1;
 	textureDesc.ArraySize = 1;
 	textureDesc.Format = DXGI_FORMAT_R24G8_TYPELESS;

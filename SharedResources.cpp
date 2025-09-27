@@ -13,6 +13,9 @@ namespace Static
 		static std::vector<VShader*> Vertex;
 		static std::vector<PShader*> Pixel;
 		static std::vector<CShader*> Compute;
+		static std::vector<HShader*> Hull;
+		static std::vector<DShader*> Domain;
+		static std::vector<GShader*> Geometry;
 	}
 
 	static Materials* materials = nullptr;
@@ -146,10 +149,6 @@ int Textures::AddTexture(const std::string& texturePath)
 		textureDesc.Format = DXGI_FORMAT_R8G8_UNORM;
 		break;
 
-	case 3:
-		textureDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
-		break;
-
 	case 4:
 		textureDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
 		break;
@@ -275,11 +274,37 @@ void SharedResources::Setup()
 {
 	Static::Shaders::Vertex.push_back(new VShader("VSMeshGeometryPass.cso"));
 
+	Static::Shaders::Vertex.push_back(new VShader("VSMeshGeometryPassTesselated.cso"));
+
+	Static::Shaders::Vertex.push_back(new VShader("VSMeshGeometryPassCubemap.cso"));
+
+	Static::Shaders::Vertex.push_back(new IndirectVShader("VSParticlePoints.cso"));
+
+	Static::Shaders::Hull.push_back(new HShader("HSMeshGeometryPass.cso"));
+
+	Static::Shaders::Domain.push_back(new DShader("DSMeshGeometryPass.cso"));
+
 	Static::Shaders::Pixel.push_back(new PShader("PSTexturedGeometryPass.cso"));
 
 	Static::Shaders::Pixel.push_back(new PShader("PSParameterGeometryPass.cso"));
 
-	Static::Shaders::Compute.push_back(new CShader("CSLightPass.cso"));
+	Static::Shaders::Pixel.push_back(new PShader("PSDistanceWrite.cso"));
+
+	Static::Shaders::Pixel.push_back(new PShader("PSCubemapGeometrypass.cso"));
+
+	Static::Shaders::Pixel.push_back(new PShader("PSGalaxyParticles.cso"));
+
+	Static::Shaders::Compute.push_back(new CShader("CSLightPass32x32.cso"));
+
+	Static::Shaders::Compute.push_back(new CShader("CSColorPass32x32.cso"));
+
+	Static::Shaders::Compute.push_back(new CShader("CSGalaxyUpdate32.cso"));
+
+	Static::Shaders::Compute.push_back(new CShader("CSGalaxyAdd1.cso"));
+
+	Static::Shaders::Compute.push_back(new CShader("CSGalaxyRemove1.cso"));
+
+	Static::Shaders::Geometry.push_back(new GShader("GSParticleBillBoarded.cso"));
 
 	Static::materials = new Materials();
 	Static::textures = new Textures();
@@ -296,6 +321,18 @@ void SharedResources::Release()
 		delete shader;
 	}
 	for (CShader* shader : Static::Shaders::Compute)
+	{
+		delete shader;
+	}
+	for (HShader* shader : Static::Shaders::Hull)
+	{
+		delete shader;
+	}
+	for (DShader* shader : Static::Shaders::Domain)
+	{
+		delete shader;
+	}
+	for (GShader* shader : Static::Shaders::Geometry)
 	{
 		delete shader;
 	}
@@ -324,6 +361,16 @@ void SharedResources::BindMaterial(int materialID)
 	Static::materials->Bind(materialID);
 }
 
+int SharedResources::GetTexture(const std::string texturePath)
+{
+	return Static::textures->AddTexture(texturePath);
+}
+
+ID3D11ShaderResourceView* SharedResources::GetTextureSRV(int textureID)
+{
+	return Static::textures->GetSRV(textureID);
+}
+
 void SharedResources::BindVertexShader(vShader ID)
 {
 	Static::Shaders::Vertex[ID]->Bind();
@@ -337,4 +384,19 @@ void SharedResources::BindPixelShader(pShader ID)
 void SharedResources::BindComputeShader(cShader ID)
 {
 	Static::Shaders::Compute[ID]->Bind();
+}
+
+void SharedResources::BindHullShader(hShader ID)
+{
+	Static::Shaders::Hull[ID]->Bind();
+}
+
+void SharedResources::BindDomainShader(dShader ID)
+{
+	Static::Shaders::Domain[ID]->Bind();
+}
+
+void SharedResources::BindGeometryShader(gShader ID)
+{
+	Static::Shaders::Geometry[ID]->Bind();
 }

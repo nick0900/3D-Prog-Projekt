@@ -2,20 +2,9 @@
 #include <d3d11.h>
 #include <DirectXMath.h>
 #include <math.h>
+#include <DirectXCollision.h>
 
 #include "BaseObject.h"
-
-/*
-width = 1024;
-height = 576;
-topLeftX = 0;
-topLeftY = 0;
-
-FovAngleY = 1.5f;
-AspectRatio = width / height;
-NearZ = 0.01f;
-FarZ = 20.0f;
-*/
 
 struct PerspectiveBuffer
 {
@@ -27,19 +16,17 @@ struct PerspectiveBuffer
 	float projectionConstantA;
 	float projectionConstantB;
 
-	PerspectiveBuffer(float FovAngleY, float AspectRatio, UINT width, UINT height, float NearZ, float FarZ) : 
-
-	widthScalar(tan(FovAngleY / 2.0f)),
-	heightScalar(widthScalar * AspectRatio), 
-
-	projectionConstantA(FarZ / (FarZ - NearZ)), 
-	projectionConstantB((-NearZ * FarZ) / (FarZ - NearZ)),
-
-	projectionMatrix(DirectX::XMFLOAT4X4())
+	PerspectiveBuffer(float FovAngleY, float AspectRatio, UINT width, UINT height, float NearZ, float FarZ)
 	{
-		DirectX::XMMATRIX transpose = DirectX::XMMatrixTranspose(DirectX::XMMatrixPerspectiveFovLH(FovAngleY, AspectRatio, NearZ, FarZ));
+		DirectX::XMMATRIX transpose = DirectX::XMMatrixTranspose(DirectX::XMMatrixPerspectiveFovLH(FovAngleY * OBJECT_ROTATION_UNIT_DEGREES, AspectRatio, NearZ, FarZ));
 
 		DirectX::XMStoreFloat4x4(&projectionMatrix, transpose);
+
+		widthScalar = 1.0f / projectionMatrix._11;
+		heightScalar = 1.0f / projectionMatrix._22;
+
+		projectionConstantA = projectionMatrix._33;
+		projectionConstantB = projectionMatrix._34;
 	}
 };
 
@@ -53,19 +40,17 @@ struct OrthographicBuffer
 	float projectionConstantA;
 	float projectionConstantB;
 
-	OrthographicBuffer(float viewWidth, float viewHeight, UINT width, UINT height, float NearZ, float FarZ) :
-
-		widthScalar(2/viewWidth),
-		heightScalar(2/viewHeight),
-
-		projectionConstantA(1 / (FarZ - NearZ)),
-		projectionConstantB(NearZ / (NearZ - FarZ)),
-
-		projectionMatrix(DirectX::XMFLOAT4X4())
+	OrthographicBuffer(float viewWidth, float viewHeight, UINT width, UINT height, float NearZ, float FarZ)
 	{
 		DirectX::XMMATRIX transpose = DirectX::XMMatrixTranspose(DirectX::XMMatrixOrthographicLH(viewWidth, viewHeight, NearZ, FarZ));
 
 		DirectX::XMStoreFloat4x4(&projectionMatrix, transpose);
+
+		widthScalar = 1.0f / projectionMatrix._11;
+		heightScalar = 1.0f / projectionMatrix._22;
+
+		projectionConstantA = projectionMatrix._33;
+		projectionConstantB = projectionMatrix._34;
 	}
 };
 
@@ -102,25 +87,29 @@ class Camera : public Object
 		UINT ViewportTopLeftX();
 		UINT ViewportTopLeftY();
 
-		void UpdateProjection();
+		virtual void ViewFrustum(DirectX::BoundingFrustum& frustum);
 
 	protected : 
 		virtual DirectX::XMFLOAT4X4 TransformMatrix() override;
 		virtual DirectX::XMFLOAT4X4 InverseTransformMatrix() override;
 
-		virtual void ProjBufferData(void* data, UINT& dataSize) = 0;
+		virtual void UpdateProjection() = 0;
 
-		void ProjModified();
+		void FlagProjChange();
+
+		bool SetupCamera();
+		virtual bool CreateBuffers() = 0;
 
 		float AspectRatio();
 
 		float NearZ;
 		float FarZ;
 
+		ID3D11Buffer* projectionBuffer;
+		DirectX::BoundingFrustum viewFrustum;
+
 	private :
-		bool SetupCamera();
 		void SetViewport();
-		bool CreateBuffers();
 
 		UINT width;
 		UINT height;
@@ -130,8 +119,6 @@ class Camera : public Object
 		D3D11_VIEWPORT viewport;
 
 		bool projModified;
-
-		ID3D11Buffer* projectionBuffer;
 
 		ID3D11Buffer* viewBuffer;
 };
@@ -147,11 +134,28 @@ public:
 	virtual void DepthRender() override;
 
 protected:
-	virtual void ProjBufferData(void* data, UINT& dataSize) override;
+	virtual void UpdateProjection() override;
+	virtual bool CreateBuffers() override;
 
 private:
 	float FovAngleY;
 	float aspectRatio;
+};
+
+class CameraPerspectiveDebug : public CameraPerspective
+{
+public:
+	CameraPerspectiveDebug(UINT widthPixels, UINT heightPixels, UINT topLeftX, UINT topLeftY, float FovAngleY, float NearZ, float FarZ, CameraPerspective* frustumCamera);
+
+	virtual void ViewFrustum(DirectX::BoundingFrustum& frustum) override;
+
+	void SetDebug(bool debugOn);
+	bool DebugOn();
+
+private:
+	bool debugOn;
+
+	CameraPerspective* frustumCamera;
 };
 
 class CameraOrthographic : public Camera
@@ -165,7 +169,8 @@ public:
 	virtual void DepthRender() override;
 
 protected:
-	virtual void ProjBufferData(void* data, UINT& dataSize) override;
+	virtual void UpdateProjection() override;
+	virtual bool CreateBuffers() override;
 
 private:
 	float WidthScale;

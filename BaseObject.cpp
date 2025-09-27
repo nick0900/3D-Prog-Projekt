@@ -11,7 +11,7 @@ void Object::Scale(const std::array<float, 3>& scaling, bool transformSpace, boo
 	{
 
 		DirectX::XMVECTOR scaleVector = DirectX::XMLoadFloat3(&newScale);
-		DirectX::XMMATRIX rotationTransform = DirectX::XMLoadFloat4x4(&rotationMatrix);
+		DirectX::XMMATRIX rotationTransform = DirectX::XMMatrixRotationQuaternion(DirectX::XMLoadFloat4(&rotationQuaternion));
 		scaleVector = DirectX::XMVector3Transform(scaleVector, rotationTransform);
 
 		DirectX::XMFLOAT3 scaleTransformed;
@@ -45,15 +45,16 @@ void Object::Scale(const std::array<float, 3>& scaling, bool transformSpace, boo
 		scale.z += newScale.z;
 	}
 
+	OnModyfied();
 	transformed = true;
 }
 
 void Object::Rotate(const std::array<float, 3>& rotation, bool transformSpace, bool transformMode, float rotationUnit)
 {
-	DirectX::XMMATRIX currentTransform = DirectX::XMLoadFloat4x4(&rotationMatrix);
+	DirectX::XMMATRIX currentTransform = DirectX::XMMatrixRotationQuaternion(DirectX::XMLoadFloat4(&rotationQuaternion));
 
 	DirectX::XMMATRIX transformation = DirectX::XMMatrixRotationRollPitchYaw(rotation[0] * rotationUnit, rotation[1] * rotationUnit, rotation[2] * rotationUnit);
-
+	
 	if (transformSpace)
 	{
 		transformation = DirectX::XMMatrixTranspose(currentTransform) * transformation * currentTransform;
@@ -66,16 +67,18 @@ void Object::Rotate(const std::array<float, 3>& rotation, bool transformSpace, b
 
 	currentTransform *= transformation;
 
-	DirectX::XMStoreFloat4x4(&rotationMatrix, currentTransform);
+	DirectX::XMVECTOR normalizedRotation = DirectX::XMQuaternionNormalize(DirectX::XMQuaternionRotationMatrix(currentTransform));
+	DirectX::XMStoreFloat4(&rotationQuaternion, normalizedRotation);
 
+	OnModyfied();
 	transformed = true;
 }
 
-void Object::Rotate(DirectX::XMFLOAT4X4& rotation, bool transformSpace, bool transformMode)
+void Object::Rotate(DirectX::XMFLOAT4& quaternion, bool transformSpace, bool transformMode)
 {
-	DirectX::XMMATRIX currentTransform = DirectX::XMLoadFloat4x4(&rotationMatrix);
+	DirectX::XMMATRIX currentTransform = DirectX::XMMatrixRotationQuaternion(DirectX::XMLoadFloat4(&rotationQuaternion));
 
-	DirectX::XMMATRIX transformation = DirectX::XMLoadFloat4x4(&rotation);
+	DirectX::XMMATRIX transformation = DirectX::XMMatrixRotationQuaternion(DirectX::XMLoadFloat4(&quaternion));
 
 	if (transformSpace)
 	{
@@ -89,8 +92,10 @@ void Object::Rotate(DirectX::XMFLOAT4X4& rotation, bool transformSpace, bool tra
 
 	currentTransform *= transformation;
 
-	DirectX::XMStoreFloat4x4(&rotationMatrix, currentTransform);
+	DirectX::XMVECTOR normalizedRotation = DirectX::XMQuaternionNormalize(DirectX::XMQuaternionRotationMatrix(currentTransform));
+	DirectX::XMStoreFloat4(&rotationQuaternion, normalizedRotation);
 
+	OnModyfied();
 	transformed = true;
 }
 
@@ -101,7 +106,7 @@ void Object::Translate(const std::array<float, 3>& translation, bool transformSp
 	if (transformSpace)
 	{
 		DirectX::XMVECTOR translationVector = DirectX::XMLoadFloat3(&newTranslation);
-		DirectX::XMMATRIX rotationTransform = DirectX::XMLoadFloat4x4(&rotationMatrix);
+		DirectX::XMMATRIX rotationTransform = DirectX::XMMatrixRotationQuaternion(DirectX::XMLoadFloat4(&rotationQuaternion));
 		translationVector = DirectX::XMVector3Transform(translationVector, rotationTransform);
 
 		DirectX::XMStoreFloat3(&newTranslation, translationVector);
@@ -118,6 +123,7 @@ void Object::Translate(const std::array<float, 3>& translation, bool transformSp
 		position.z += newTranslation.z;
 	}
 
+	OnModyfied();
 	transformed = true;
 }
 
@@ -126,7 +132,7 @@ bool Object::CreateTransformBuffer()
 	scale.x = 1.0f;
 	scale.y = 1.0f;
 	scale.z = 1.0f;
-	DirectX::XMStoreFloat4x4(&rotationMatrix, DirectX::XMMatrixRotationRollPitchYaw(0.0f, 0.0f, 0.0f));
+	DirectX::XMStoreFloat4(&rotationQuaternion, DirectX::XMQuaternionRotationRollPitchYaw(0.0f, 0.0f, 0.0f));
 
 	transformed = false;
 
@@ -177,7 +183,7 @@ DirectX::XMFLOAT4X4 Object::TransformMatrix()
 {
 	DirectX::XMMATRIX scaling = DirectX::XMMatrixScaling(scale.x, scale.y, scale.z);
 
-	DirectX::XMMATRIX rotation = DirectX::XMLoadFloat4x4(&rotationMatrix);
+	DirectX::XMMATRIX rotation = DirectX::XMMatrixRotationQuaternion(DirectX::XMLoadFloat4(&rotationQuaternion));
 
 	DirectX::XMMATRIX translation = DirectX::XMMatrixTranslation(position.x, position.y, position.z);
 
@@ -192,15 +198,24 @@ DirectX::XMFLOAT4X4 Object::InverseTransformMatrix()
 {
 	DirectX::XMMATRIX invScaling = DirectX::XMMatrixScaling((scale.x != 0) ? 1.0f / scale.x : 0.0f, (scale.y != 0) ? 1.0f / scale.y : 0.0f, (scale.z != 0) ? 1.0f / scale.z : 0.0f);
 
-	DirectX::XMMATRIX invRotation = DirectX::XMMatrixTranspose(DirectX::XMLoadFloat4x4(&rotationMatrix));
+	DirectX::XMMATRIX invRotation = DirectX::XMMatrixTranspose(DirectX::XMMatrixRotationQuaternion(DirectX::XMLoadFloat4(&rotationQuaternion)));
 
 	DirectX::XMMATRIX invTranslation = DirectX::XMMatrixTranslation(-position.x, -position.y, -position.z);
 
 	DirectX::XMFLOAT4X4 output;
 
-	DirectX::XMStoreFloat4x4(&output, DirectX::XMMatrixTranspose(invScaling * invRotation * invTranslation));
+	DirectX::XMStoreFloat4x4(&output, DirectX::XMMatrixTranspose(invTranslation * invRotation * invScaling));
 
 	return output;
+}
+
+bool Object::Contained(DirectX::BoundingFrustum& viewFrustum)
+{
+	return false;
+}
+
+void Object::AddToQuadTree(QuadTree* tree)
+{
 }
 
 void Object::OnModyfied() {}

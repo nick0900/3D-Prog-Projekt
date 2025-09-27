@@ -125,23 +125,54 @@ namespace SharedResources
 	int GetMaterialID(const std::string materialName);
 	void BindMaterial(int materialID);
 
+	int GetTexture(const std::string texturePath);
+	ID3D11ShaderResourceView* GetTextureSRV(int textureID);
+
 
 	enum vShader
 	{
-		Standard = 0
+		VSStandard = 0,
+		Tesselation = 1,
+		VSCubemap = 2,
+		VSParticlePoints = 3
 	};
 	void BindVertexShader(vShader ID);
 
 	enum pShader
 	{
 		TextureMaterial = 0,
-		ParameterMaterial = 1
+		ParameterMaterial = 1,
+		DistanceWrite = 2,
+		PSCubemap = 3,
+		PSGalaxyParticles = 4
 	};
 	void BindPixelShader(pShader ID);
 
 	enum cShader
 	{
-		standard = 0
+		Standard32x32 = 0,
+		ColorPass32x32 = 1,
+		GalaxyUpdate32 = 2,
+		GalaxyAdd1 = 3,
+		GalaxyRemove1 = 4
 	};
 	void BindComputeShader(cShader ID);
+
+	enum hShader
+	{
+		HSStandard = 0
+	};
+	void BindHullShader(hShader ID);
+
+	enum dShader
+	{
+		DSStandard = 0
+	};
+	void BindDomainShader(dShader ID);
+
+	enum gShader
+	{
+		BillboardedParticles = 0
+	};
+	void BindGeometryShader(gShader ID);
 }

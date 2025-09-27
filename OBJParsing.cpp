@@ -1,12 +1,15 @@
 #include "OBJParsing.h"
 #include <fstream>
 #include <iostream>
+#include <DirectXCollision.h>
 
 #include "SharedResources.h"
 #include "Pipeline.h"
+#include "Renderer.h"
 
 STDOBJ::STDOBJ(const std::string OBJFilepath)
 {
+	boundingVolume = DirectX::BoundingSphere();
 	if (!CreateTransformBuffer())
 	{
 		std::cerr << "Failed to create transform buffer!" << std::endl;
@@ -39,7 +42,8 @@ void STDOBJ::Render()
 
 	Pipeline::Deferred::GeometryPass::VertexShader::Bind::ObjectTransform(worldTransformBuffer);
 	
-	SharedResources::BindVertexShader(SharedResources::vShader::Standard);
+	SharedResources::BindVertexShader(SharedResources::vShader::VSStandard);
+	Pipeline::Deferred::GeometryPass::VertexShader::Bind::PrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
 
 	int previousMaterial = -1;
 	for (Submesh submesh : submeshes)
@@ -72,12 +76,57 @@ void STDOBJ::DepthRender()
 
 	Pipeline::Deferred::GeometryPass::VertexShader::Bind::ObjectTransform(worldTransformBuffer);
 
-	SharedResources::BindVertexShader(SharedResources::vShader::Standard);
+	SharedResources::BindVertexShader(SharedResources::vShader::VSStandard);
+	Pipeline::Deferred::GeometryPass::VertexShader::Bind::PrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
 
 	for (Submesh submesh : submeshes)
 	{
 		Pipeline::DrawIndexed(submesh.size, submesh.Start);
 	}
+}
+
+bool STDOBJ::Contained(DirectX::BoundingFrustum& viewFrustum)
+{
+	float biggestScale = 0.0f;
+	if (scale.x > biggestScale) biggestScale = scale.x;
+	if (scale.y > biggestScale) biggestScale = scale.y;
+	if (scale.z > biggestScale) biggestScale = scale.z;
+
+	DirectX::XMMATRIX scaling = DirectX::XMMatrixScaling(biggestScale, biggestScale, biggestScale);
+
+	DirectX::XMMATRIX rotation = DirectX::XMMatrixRotationQuaternion(DirectX::XMLoadFloat4(&rotationQuaternion));
+
+	DirectX::XMMATRIX translation = DirectX::XMMatrixTranslation(position.x, position.y, position.z);
+
+	DirectX::XMMATRIX transform = scaling * rotation * translation;
+
+	DirectX::BoundingSphere transformedVolume;
+
+	boundingVolume.Transform(transformedVolume, transform);
+	
+	return transformedVolume.Intersects(viewFrustum);
+}
+
+void STDOBJ::AddToQuadTree(QuadTree* tree)
+{
+	float biggestScale = 0.0f;
+	if (scale.x > biggestScale) biggestScale = scale.x;
+	if (scale.y > biggestScale) biggestScale = scale.y;
+	if (scale.z > biggestScale) biggestScale = scale.z;
+
+	DirectX::XMMATRIX scaling = DirectX::XMMatrixScaling(biggestScale, biggestScale, biggestScale);
+
+	DirectX::XMMATRIX rotation = DirectX::XMMatrixRotationQuaternion(DirectX::XMLoadFloat4(&rotationQuaternion));
+
+	DirectX::XMMATRIX translation = DirectX::XMMatrixTranslation(position.x, position.y, position.z);
+
+	DirectX::XMMATRIX transform = scaling * rotation * translation;
+
+	DirectX::BoundingSphere transformedVolume;
+
+	boundingVolume.Transform(transformedVolume, transform);
+	
+	tree->InsertObject(this, &transformedVolume);
 }
 
 bool GetWord(std::string& word, std::string& line, char splitChar)
@@ -128,6 +177,8 @@ bool STDOBJ::LoadOBJ(std::string OBJFilepath)
 	bool newSubmesh = false;
 
 	std::string line = "";
+
+	float boundingRadius = 0.0f;
 
 	while (std::getline(OBJ, line))
 	{
@@ -225,6 +276,12 @@ bool STDOBJ::LoadOBJ(std::string OBJFilepath)
 					Vertex temp = { {pos[index[0]][0], pos[index[0]][1], pos[index[0]][2]}, {norm[index[2]][0], norm[index[2]][1], norm[index[2]][2]}, {uv[index[1]][0], -uv[index[1]][1]} };
 
 					vertecies.push_back(temp);
+
+					float distance = sqrtf(powf(temp.pos[0], 2.0f) + powf(temp.pos[1], 2.0f) + powf(temp.pos[2], 2.0f));
+					if (distance > boundingRadius)
+					{
+						boundingRadius = distance;
+					}
 				}
 
 				indecies.push_back(vertMap[key]);
@@ -273,6 +330,8 @@ bool STDOBJ::LoadOBJ(std::string OBJFilepath)
 		std::cerr << "Failed to create indexbuffer!" << std::endl;
 		return false;
 	}
+
+	boundingVolume = DirectX::BoundingSphere({ 0.0f, 0.0f, 0.0f }, boundingRadius);
 
 	return true;
 }
@@ -371,4 +430,215 @@ bool STDOBJ::LoadMTL(std::string MTLFilepath)
 	}
 
 	return true;
+}
+
+STDOBJTesselated::STDOBJTesselated(const std::string OBJFilepath, float maxTesselation, float maxDistance, float minDistance, float interpolationFactor) : STDOBJ(OBJFilepath)
+{
+	D3D11_BUFFER_DESC bufferDesc;
+
+	TesselationConfigBufferStruct bufferStruct = TesselationConfigBufferStruct(maxTesselation, maxDistance, minDistance, interpolationFactor);
+
+	bufferDesc.ByteWidth = sizeof(TesselationConfigBufferStruct);
+	bufferDesc.Usage = D3D11_USAGE_IMMUTABLE;
+	bufferDesc.BindFlags = D3D11_BIND_CONSTANT_BUFFER;
+	bufferDesc.CPUAccessFlags = 0;
+	bufferDesc.MiscFlags = 0;
+	bufferDesc.StructureByteStride = 0;
+
+	D3D11_SUBRESOURCE_DATA data;
+	data.pSysMem = &bufferStruct;
+	data.SysMemPitch = 0;
+	data.SysMemSlicePitch = 0;
+
+	if (FAILED(Pipeline::Device()->CreateBuffer(&bufferDesc, &data, &tesselationConfigBuffer)))
+	{
+		std::cerr << "Failed to create tesselation config buffer" << std::endl;
+	}
+}
+
+STDOBJTesselated::~STDOBJTesselated()
+{
+	tesselationConfigBuffer->Release();
+}
+
+void STDOBJTesselated::Render()
+{
+	UINT stride = sizeof(Vertex);
+	UINT offset = 0;
+
+	Pipeline::Deferred::GeometryPass::VertexShader::Bind::VertexBuffer(stride, offset, vertexBuffer);
+	Pipeline::Deferred::GeometryPass::VertexShader::Bind::IndexBuffer(indexBuffer);
+
+	UpdateTransformBuffer();
+
+	Pipeline::Deferred::GeometryPass::VertexShader::Bind::ObjectTransform(worldTransformBuffer);
+
+	SharedResources::BindVertexShader(SharedResources::vShader::Tesselation);
+
+	Pipeline::Deferred::GeometryPass::HullShader::Bind::HSConfigBuffer(tesselationConfigBuffer);
+	
+	SharedResources::BindHullShader(SharedResources::hShader::HSStandard);
+
+	Pipeline::Deferred::GeometryPass::DomainShader::Bind::DSConfigBuffer(tesselationConfigBuffer);
+
+	SharedResources::BindDomainShader(SharedResources::dShader::DSStandard);
+
+	Pipeline::Deferred::GeometryPass::VertexShader::Bind::PrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_3_CONTROL_POINT_PATCHLIST);
+
+	int previousMaterial = -1;
+	for (Submesh submesh : submeshes)
+	{
+		if (submesh.material == -1)
+		{
+			//extra precaution, should not happen during correct execution.
+			submesh.material = 0;
+		}
+
+		if (submesh.material != previousMaterial)
+		{
+			previousMaterial = submesh.material;
+			SharedResources::BindMaterial(submesh.material);
+		}
+
+		Pipeline::DrawIndexed(submesh.size, submesh.Start);
+	}
+
+	Pipeline::Deferred::GeometryPass::HullShader::UnBind::HullShader();
+	Pipeline::Deferred::GeometryPass::DomainShader::UnBind::DomainShader();
+}
+
+void STDOBJTesselated::DepthRender()
+{
+	UINT stride = sizeof(Vertex);
+	UINT offset = 0;
+
+	Pipeline::Deferred::GeometryPass::VertexShader::Bind::VertexBuffer(stride, offset, vertexBuffer);
+	Pipeline::Deferred::GeometryPass::VertexShader::Bind::IndexBuffer(indexBuffer);
+
+	UpdateTransformBuffer();
+
+	Pipeline::Deferred::GeometryPass::VertexShader::Bind::ObjectTransform(worldTransformBuffer);
+
+	SharedResources::BindVertexShader(SharedResources::vShader::Tesselation);
+
+	Pipeline::Deferred::GeometryPass::HullShader::Bind::HSConfigBuffer(tesselationConfigBuffer);
+
+	SharedResources::BindHullShader(SharedResources::hShader::HSStandard);
+
+	Pipeline::Deferred::GeometryPass::DomainShader::Bind::DSConfigBuffer(tesselationConfigBuffer);
+
+	SharedResources::BindDomainShader(SharedResources::dShader::DSStandard);
+
+	Pipeline::Deferred::GeometryPass::VertexShader::Bind::PrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_3_CONTROL_POINT_PATCHLIST);
+
+	for (Submesh submesh : submeshes)
+	{
+		Pipeline::DrawIndexed(submesh.size, submesh.Start);
+	}
+
+	Pipeline::Deferred::GeometryPass::HullShader::UnBind::HullShader();
+	Pipeline::Deferred::GeometryPass::DomainShader::UnBind::DomainShader();
+}
+
+STDOBJMirror::STDOBJMirror(const std::string OBJFilepath, UINT resolution, DeferredRenderer* renderer, float nearPlane, float farPlane) : STDOBJ(OBJFilepath), renderer(renderer), resolution(resolution), nearPlane(nearPlane), farPlane(farPlane), blockRender(false)
+{
+	D3D11_TEXTURE2D_DESC textureDesc;
+	textureDesc.MipLevels = 1;
+	textureDesc.ArraySize = 6;
+	textureDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
+	textureDesc.SampleDesc.Count = 1;
+	textureDesc.SampleDesc.Quality = 0;
+	textureDesc.Usage = D3D11_USAGE_DEFAULT;
+	textureDesc.BindFlags = D3D11_BIND_UNORDERED_ACCESS | D3D11_BIND_SHADER_RESOURCE;
+	textureDesc.CPUAccessFlags = 0;
+	textureDesc.MiscFlags = D3D11_RESOURCE_MISC_TEXTURECUBE;
+	textureDesc.Width = resolution;
+	textureDesc.Height = resolution;
+
+	if (FAILED(Pipeline::Device()->CreateTexture2D(&textureDesc, nullptr, &textureCube)))
+	{
+		std::cerr << "Failed to set up texture cube resource" << std::endl;
+	}
+
+	D3D11_SHADER_RESOURCE_VIEW_DESC srvDesc;
+	srvDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
+	srvDesc.ViewDimension = D3D11_SRV_DIMENSION_TEXTURECUBE;
+	D3D11_TEXCUBE_SRV texSRV;
+	texSRV.MipLevels = 1;
+	texSRV.MostDetailedMip = 0;
+	srvDesc.TextureCube = texSRV;
+
+	if (FAILED(Pipeline::Device()->CreateShaderResourceView(textureCube, &srvDesc, &SRV)))
+	{
+		std::cerr << "Failed to set up SRV" << std::endl;
+	}
+
+	D3D11_UNORDERED_ACCESS_VIEW_DESC uavDesc;
+	uavDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
+	uavDesc.ViewDimension = D3D11_UAV_DIMENSION_TEXTURE2DARRAY;
+	D3D11_TEX2D_ARRAY_UAV texUAV;
+	texUAV.ArraySize = 1;
+	texUAV.MipSlice = 0;
+	uavDesc.Texture2DArray = texUAV;
+
+	for (int i = 0; i < 6; i++)
+	{
+		uavDesc.Texture2DArray.FirstArraySlice = i;
+		if (FAILED(Pipeline::Device()->CreateUnorderedAccessView(textureCube, &uavDesc, &UAVs[i])))
+		{
+			std::cerr << "Error: Failed to set up UAVs" << std::endl;
+		}
+	}
+}
+
+STDOBJMirror::~STDOBJMirror()
+{
+	for (int i = 0; i < 6; i++)
+	{
+		UAVs[i]->Release();
+	}
+	textureCube->Release();
+	SRV->Release();
+}
+
+void STDOBJMirror::Render()
+{
+	if (blockRender) return;
+
+	UINT stride = sizeof(Vertex);
+	UINT offset = 0;
+
+	Pipeline::Deferred::GeometryPass::VertexShader::Bind::VertexBuffer(stride, offset, vertexBuffer);
+	Pipeline::Deferred::GeometryPass::VertexShader::Bind::IndexBuffer(indexBuffer);
+
+	UpdateTransformBuffer();
+
+	Pipeline::Deferred::GeometryPass::VertexShader::Bind::ObjectTransform(worldTransformBuffer);
+
+	SharedResources::BindVertexShader(SharedResources::vShader::VSCubemap);
+	Pipeline::Deferred::GeometryPass::VertexShader::Bind::PrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+
+	SharedResources::BindPixelShader(SharedResources::pShader::PSCubemap);
+
+	Pipeline::Deferred::GeometryPass::PixelShader::Bind::Reflectionmap(SRV);
+
+	for (Submesh submesh : submeshes)
+	{
+		Pipeline::DrawIndexed(submesh.size, submesh.Start);
+	}
+}
+
+void STDOBJMirror::ReflectionRender()
+{
+	for (int i = 0; i < 6; i++)
+	{
+		Pipeline::Clean::UnorderedAccessView(UAVs[i]);
+	}
+
+	CameraPerspective view = CameraPerspective(resolution, resolution, 0.0f, 0.0f, 90.0f, nearPlane, farPlane);
+	view.Translate({ position.x, position.y, position.z }, OBJECT_TRANSFORM_SPACE_GLOBAL, OBJECT_TRANSFORM_REPLACE);
+
+	blockRender = true;
+	renderer->OmniCameraDeferredRender(&view, UAVs);
+	blockRender = false;
 }

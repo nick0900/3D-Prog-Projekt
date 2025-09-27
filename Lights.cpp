@@ -4,87 +4,70 @@
 
 #include "Pipeline.h"
 
-Shadowmap::Shadowmap(UINT resolution) : resolution(resolution)
+
+SingularLight::SingularLight(const std::array<float, 3>& diffuse, const std::array<float, 3>& specular) : lightDiffuse(diffuse), lightSpecular(specular), castShadows(false), shadowmap(nullptr), parametersModifyed(false), parameterBuffer(nullptr)
 {
-	D3D11_TEXTURE2D_DESC textureDesc;
-	Texture2DDesc(textureDesc);
-	textureDesc.Width = resolution;
-	textureDesc.Height = resolution;
-
-	if (FAILED(Pipeline::Device()->CreateTexture2D(&textureDesc, nullptr, &mapTexture)))
+	if (!CreateTransformBuffer())
 	{
-		std::cerr << "Failed to set up own shadow map texture resource" << std::endl;
-	}
-
-	D3D11_SHADER_RESOURCE_VIEW_DESC srvDesc;
-	SRVDesc(srvDesc);
-
-	if (FAILED(Pipeline::Device()->CreateShaderResourceView(mapTexture, &srvDesc, &mapSRV)))
-	{
-		std::cerr << "Failed to set up own shadow map SRV" << std::endl;
+		std::cerr << "Failed to create light transform Buffer" << std::endl;
 	}
 }
 
-Shadowmap::~Shadowmap()
-{
-	mapTexture->Release();
-	mapSRV->Release();
-}
-
-int Shadowmap::Resolution()
-{
-	return resolution;
-}
-
-LightBase::LightBase() : castShadows(false), shadowmap(nullptr) {}
-
-LightBase::~LightBase()
+SingularLight::~SingularLight()
 {
 	DeleteShadowMap();
+	parameterBuffer->Release();
+	worldTransformBuffer->Release();
 }
 
-void LightBase::GetParameters(LightBufferStruct* dest)
+void SingularLight::SetDiffuse(std::array<float, 3> lightDiffuse)
 {
-	*dest = LightBufferStruct(Type(), LightFOV(), LightFalloff(), lightDiffuse, lightSpecular, LightPosition(), LightDirection(), InverseTransformMatrix(), ProjMatrix());
-	if (castShadows && (shadowmap != nullptr))
+	for (int i = 0; i < 3; i++)
 	{
-		dest->mappingMode = shadowmap->ShadowmapMappingMode();
+		this->lightDiffuse[i] = lightDiffuse[i];
 	}
+	parametersModifyed = true;
 }
 
-
-
-ID3D11DepthStencilView** LightBase::ShadowmapDSVs()
+std::array<float, 3> SingularLight::Diffuse()
 {
-	if (CastShadows()) return shadowmap->DSVArray();
-	return nullptr;
+	return lightDiffuse;
 }
 
-MappingMode LightBase::ShadowMappingMode()
+void SingularLight::SetSpecular(std::array<float, 3> lightSpecular)
 {
-	if (CastShadows()) return shadowmap->ShadowmapMappingMode();
-	return MappingMode::SingleMap;
-}
-
-void LightBase::SetupShadowmap(MappingMode mapType, UINT resolution)
-{
-	switch (mapType)	
+	for (int i = 0; i < 3; i++)
 	{
-	case MappingMode::SingleMap:
-		shadowmap = new ShadowMapSingle(resolution);
-		break;
-
-	case MappingMode::DoubleMap:
-		shadowmap = new ShadowMapDouble(resolution);
-		break;
-
-	case MappingMode::CubeMap:
-		shadowmap = new ShadowMapCube(resolution);
-		break;
+		this->lightSpecular[i] = lightSpecular[i];
 	}
+	parametersModifyed = true;
 }
 
-void LightBase::DeleteShadowMap()
+std::array<float, 3> SingularLight::Specular()
+{
+	return lightSpecular;
+}
+
+void SingularLight::Bind()
+{
+	if (parametersModifyed)
+	{
+		UpdateParameterBuffer();
+
+		parametersModifyed = false;
+	}
+
+	BindBuffer();
+
+	if (castShadows)
+	{
+		shadowmap->Bind();
+	}
+
+	Pipeline::Deferred::LightPass::ComputeShader::Settings::Shadowcaster(castShadows);
+}
+
+void SingularLight::DeleteShadowMap()
 {
 	if (shadowmap != nullptr)
 	{
@@ -93,137 +76,54 @@ void LightBase::DeleteShadowMap()
 	}
 }
 
-bool LightBase::CastShadows()
+bool SingularLight::CastingShadows()
 {
 	return castShadows;
 }
 
-void LightBase::SetCastShadows(bool castShadows)
+void SingularLight::SetCastShadows(bool castShadows)
 {
 	this->castShadows = (shadowmap != nullptr) && castShadows;
 }
 
-ID3D11ShaderResourceView* LightBase::ShadowmapSRV()
+void SingularLight::flagParameterChange()
+{
+	parametersModifyed = true;
+}
+
+void SingularLight::OnModyfied()
 {
 	if (castShadows)
 	{
-		return shadowmap->mapSRV;
+		shadowmap->flagShadowChange();
 	}
-	return nullptr;
+
+	flagParameterChange();
 }
 
-LightBinder::LightBinder() : paramCapacity(SMALLEST_PARAM_CAPACITY)
+
+
+PointLight::PointLight(const std::array<float, 3>& diffuse, const std::array<float, 3>& specular, float fallof) : falloff(fallof), SingularLight(diffuse, specular), nearPlane(0), farPlane(0)
 {
 	D3D11_BUFFER_DESC bufferDesc;
 
-	bufferDesc.ByteWidth = sizeof(GeneralLightInfoBuffer);
+	PointLightBuffer bufferStruct = PointLightBuffer(falloff, Diffuse(), Specular(), { position.x, position.y, position.z });
+
+	bufferDesc.ByteWidth = sizeof(bufferStruct);
 	bufferDesc.Usage = D3D11_USAGE_DYNAMIC;
 	bufferDesc.BindFlags = D3D11_BIND_CONSTANT_BUFFER;
 	bufferDesc.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;
 	bufferDesc.MiscFlags = 0;
+	bufferDesc.StructureByteStride = 0;
 
-	if (FAILED(Pipeline::Device()->CreateBuffer(&bufferDesc, nullptr, &LightsGeneralData)))
+	D3D11_SUBRESOURCE_DATA data;
+	data.pSysMem = &bufferStruct;
+	data.SysMemPitch = 0;
+	data.SysMemSlicePitch = 0;
+
+	if (FAILED(Pipeline::Device()->CreateBuffer(&bufferDesc, &data, &parameterBuffer)))
 	{
-		std::cerr << "Error: failed to create light binder general light info buffer" << std::endl;
-	}
-
-	paramsStructuredBuffer = AllocateParamBuffer(paramCapacity);
-}
-
-LightBinder::~LightBinder()
-{
-	LightsGeneralData->Release();
-	paramsStructuredBuffer->Release();
-}
-
-void LightBinder::Bind()
-{
-	if ((boundLights.size() >= paramCapacity) || ((paramCapacity > SMALLEST_PARAM_CAPACITY) && (boundLights.size() < paramCapacity / 2)))
-	{
-		while (boundLights.size() >= paramCapacity)
-		{
-			paramCapacity *= 2;
-		}
-		while ((paramCapacity > SMALLEST_PARAM_CAPACITY) && (boundLights.size() < paramCapacity / 2))
-		{
-			paramCapacity /= 2;
-		}
-
-		paramsStructuredBuffer->Release();
-		paramsStructuredBuffer = AllocateParamBuffer(paramCapacity);
-	}
-	
-	D3D11_MAPPED_SUBRESOURCE mappedResource;
-
-	GeneralLightInfoBuffer infoBuffer[1] = { GeneralLightInfoBuffer(boundLights.size()) };
-
-	Pipeline::ResourceManipulation::MapBuffer(LightsGeneralData, &mappedResource);
-	memcpy(mappedResource.pData, infoBuffer, sizeof(GeneralLightInfoBuffer));
-	Pipeline::ResourceManipulation::UnmapBuffer(LightsGeneralData);
-	
-	Pipeline::Deferred::LightPass::ComputeShader::Bind::LightGeneralInfoBuffer(LightsGeneralData);
-
-
-	Pipeline::ResourceManipulation::MapBuffer(paramsStructuredBuffer, &mappedResource);
-	
-	LightBufferStruct* copyStager = new LightBufferStruct[boundLights.size()];
-	std::vector<ID3D11ShaderResourceView*> shadowmapSRVs;
-
-	for (int i = 0; i < boundLights.size(); i++)
-	{
-		boundLights[i]->GetParameters(copyStager + i);
-
-		if (boundLights[i]->CastShadows())
-		{
-			copyStager[i].shadowMapIndex = shadowmapSRVs.size();
-			shadowmapSRVs.push_back(boundLights[i]->ShadowmapSRV());
-		}
-	}
-
-	memcpy(mappedResource.pData, copyStager, sizeof(LightBufferStruct) * boundLights.size());
-	delete[] copyStager;
-	Pipeline::ResourceManipulation::UnmapBuffer(paramsStructuredBuffer);
-
-	Pipeline::Deferred::LightPass::ComputeShader::Bind::ShadowmapResources(shadowmapSRVs.data(), shadowmapSRVs.size());
-	Pipeline::Deferred::LightPass::ComputeShader::Bind::LightParameterStructuredBuffer(paramsStructuredBuffer);
-}
-
-void LightBinder::AddLight(LightBase* light)
-{
-	boundLights.push_back(light);
-}
-
-void LightBinder::ClearLights()
-{
-	boundLights.clear();
-}
-
-ID3D11Buffer* LightBinder::AllocateParamBuffer(UINT capacity)
-{
-	ID3D11Buffer* temp;
-
-	D3D11_BUFFER_DESC bufferDesc;
-
-	bufferDesc.ByteWidth = capacity * sizeof(LightBufferStruct);
-	bufferDesc.Usage = D3D11_USAGE_DYNAMIC;
-	bufferDesc.BindFlags = D3D11_BIND_CONSTANT_BUFFER;
-	bufferDesc.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;
-	bufferDesc.MiscFlags = D3D11_RESOURCE_MISC_BUFFER_STRUCTURED;
-	bufferDesc.StructureByteStride = sizeof(LightBufferStruct);
-
-	if (FAILED(Pipeline::Device()->CreateBuffer(&bufferDesc, nullptr, &temp)))
-	{
-		return nullptr;
-	}
-	return temp;
-}
-
-PointLight::PointLight(const std::array<float, 3>& diffuse, const std::array<float, 3>& specular, float fallof) : fallof(fallof)
-{
-	for (int i = 0; i < 3; i++)
-	{
-		lightDiffuse[i] = diffuse[i];
-		lightSpecular[i] = specular[i];
+		std::cerr << "Failed to create light parameter Buffer" << std::endl;
 	}
 }
 
@@ -244,79 +144,40 @@ DirectX::XMFLOAT4X4 PointLight::TransformMatrix()
 
 DirectX::XMFLOAT4X4 PointLight::InverseTransformMatrix()
 {
-	DirectX::XMMATRIX invScaling = DirectX::XMMatrixScaling(1.0f, 1.0f, 1.0f);
-
 	DirectX::XMMATRIX invRotation = DirectX::XMMatrixRotationRollPitchYaw(0.0f, 0.0f, 0.0f);
 
 	DirectX::XMMATRIX invTranslation = DirectX::XMMatrixTranslation(-position.x, -position.y, -position.z);
 
 	DirectX::XMFLOAT4X4 output;
 
-	DirectX::XMStoreFloat4x4(&output, DirectX::XMMatrixTranspose(invScaling * invRotation * invTranslation));
+	DirectX::XMStoreFloat4x4(&output, DirectX::XMMatrixTranspose(invTranslation * invRotation));
 
 	return output;
 }
 
 Camera* PointLight::ShadowMapCamera()
 {
-	if (!CastShadows) return;
+	if (!CastingShadows()) return nullptr;
 
-	CameraPerspective* outputCamera = nullptr;
-
-	switch (shadowmap->ShadowmapMappingMode())
-	{
-	case MappingMode::SingleMap:
-		outputCamera = new CameraPerspective(shadowmap->Resolution(), shadowmap->Resolution(), 0, 0, 360.0f, nearPlane, farPlane);
-		outputCamera->Rotate({ 90.0f, 0.0f, 0.0f }, OBJECT_TRANSFORM_SPACE_GLOBAL, OBJECT_TRANSFORM_REPLACE, OBJECT_ROTATION_UNIT_DEGREES);
-		outputCamera->Translate({ position.x, position.y, position.z }, OBJECT_TRANSFORM_SPACE_GLOBAL, OBJECT_TRANSFORM_REPLACE);
-		break;
-
-	case MappingMode::DoubleMap:
-		outputCamera = new CameraPerspective(shadowmap->Resolution(), shadowmap->Resolution(), 0, 0, 180.0f, nearPlane, farPlane);
-		outputCamera->Rotate({ 90.0f, 0.0f, 0.0f }, OBJECT_TRANSFORM_SPACE_GLOBAL, OBJECT_TRANSFORM_REPLACE, OBJECT_ROTATION_UNIT_DEGREES);
-		outputCamera->Translate({ position.x, position.y, position.z }, OBJECT_TRANSFORM_SPACE_GLOBAL, OBJECT_TRANSFORM_REPLACE);
-		break;
-
-	case MappingMode::CubeMap:
-		outputCamera = new CameraPerspective(shadowmap->Resolution(), shadowmap->Resolution(), 0, 0, 90.0f, nearPlane, farPlane);
-		outputCamera->Rotate({ 0.0f, 0.0f, 0.0f }, OBJECT_TRANSFORM_SPACE_GLOBAL, OBJECT_TRANSFORM_REPLACE, OBJECT_ROTATION_UNIT_DEGREES);
-		outputCamera->Translate({ position.x, position.y, position.z }, OBJECT_TRANSFORM_SPACE_GLOBAL, OBJECT_TRANSFORM_REPLACE);
-		break;
-	}
+	CameraPerspective* outputCamera = new CameraPerspective(shadowmap->Resolution(), shadowmap->Resolution(), 0, 0, 90.0f, nearPlane, farPlane);
+	outputCamera->Rotate({ 0.0f, 0.0f, 0.0f }, OBJECT_TRANSFORM_SPACE_GLOBAL, OBJECT_TRANSFORM_REPLACE, OBJECT_ROTATION_UNIT_DEGREES);
+	outputCamera->Translate({ position.x, position.y, position.z }, OBJECT_TRANSFORM_SPACE_GLOBAL, OBJECT_TRANSFORM_REPLACE);
 
 	return outputCamera;
 }
 
-void PointLight::CreateShadowMap(MappingMode mapType, UINT resolution, float nearPlane, float farPlane)
+void PointLight::SetFalloff(float falloff)
 {
-	SetupShadowmap(mapType, resolution);
+	this->falloff = falloff;
+	flagParameterChange();
+}
+
+void PointLight::CreateShadowMap(UINT resolution, float nearPlane, float farPlane, OmniDistanceRenderer* renderer)
+{
+	DeleteShadowMap();
+	shadowmap = new ShadowMapCube(resolution, this, renderer);
 	this->nearPlane = nearPlane;
 	this->farPlane = farPlane;
-}
-
-LightType PointLight::Type()
-{
-	return LightType::PointLight;
-}
-
-float PointLight::LightFOV()
-{
-	return 0.0f;
-}
-
-float PointLight::LightFalloff()
-{
-	return fallof;
-}
-
-std::array<float, 3> PointLight::LightDirection()
-{
-	return {0.0f, 0.0f, 0.0f};
-}
-
-std::array<float, 3> PointLight::LightPosition()
-{
-	return {position.x, position.y, position.z};
 }
 
 void PointLight::Render()
@@ -329,36 +190,60 @@ void PointLight::DepthRender()
 
 DirectX::XMFLOAT4X4 PointLight::ProjMatrix()
 {
-	DirectX::XMFLOAT4X4 output;
+	DirectX::XMFLOAT4X4 output = DirectX::XMFLOAT4X4();
 
-	if (CastShadows())
+	if (CastingShadows())
 	{
-		float fov = 0;
-		switch (shadowmap->ShadowmapMappingMode())
-		{
-		case MappingMode::SingleMap:
-			fov = 360.0f;
-			break;
-
-		case MappingMode::DoubleMap:
-			fov = 180.0f;
-			break;
-
-		case MappingMode::CubeMap:
-			fov = 90.0f;
-		}
-		DirectX::XMStoreFloat4x4(&output, DirectX::XMMatrixPerspectiveFovLH(fov, 1.0f, nearPlane, farPlane));
+		DirectX::XMStoreFloat4x4(&output, DirectX::XMMatrixTranspose(DirectX::XMMatrixPerspectiveFovLH(90.0f * OBJECT_ROTATION_UNIT_DEGREES, 1.0f, nearPlane, farPlane)));
 	}
 	
 	return output;
 }
 
-DirectionalLight::DirectionalLight(const std::array<float, 3>& diffuse, const std::array<float, 3>& specular)
+void PointLight::UpdateParameterBuffer()
 {
-	for (int i = 0; i < 3; i++)
+	D3D11_MAPPED_SUBRESOURCE mappedResource;
+
+	PointLightBuffer bufferStruct = PointLightBuffer(falloff, Diffuse(), Specular(), { position.x, position.y, position.z });
+
+	Pipeline::ResourceManipulation::MapBuffer(parameterBuffer, &mappedResource);
+	memcpy(mappedResource.pData, &bufferStruct, sizeof(bufferStruct));
+	Pipeline::ResourceManipulation::UnmapBuffer(parameterBuffer);
+}
+
+void PointLight::BindBuffer()
+{
+	Pipeline::Deferred::LightPass::ComputeShader::Settings::LightType(LightShaderMode::LightTypePoint);
+	Pipeline::Deferred::LightPass::ComputeShader::Bind::PointLightParameterBuffer(parameterBuffer);
+}
+
+DirectionalLight::DirectionalLight(const std::array<float, 3>& diffuse, const std::array<float, 3>& specular) : SingularLight(diffuse, specular), nearPlane(0), farPlane(0), viewWidth(0)
+{
+	D3D11_BUFFER_DESC bufferDesc;
+
+	DirectX::XMMATRIX rotation = DirectX::XMMatrixRotationQuaternion(DirectX::XMLoadFloat4(&rotationQuaternion));
+	DirectX::XMVECTOR direction = { 0.0f, 0.0f, -1.0f };
+	direction = DirectX::XMVector3Transform(direction, rotation);
+	DirectX::XMFLOAT3 output;
+	DirectX::XMStoreFloat3(&output, direction);
+
+	DirectionalLightBuffer bufferStruct = DirectionalLightBuffer(Diffuse(), Specular(), { output.x, output.y, output.z });
+
+	bufferDesc.ByteWidth = sizeof(bufferStruct);
+	bufferDesc.Usage = D3D11_USAGE_DYNAMIC;
+	bufferDesc.BindFlags = D3D11_BIND_CONSTANT_BUFFER;
+	bufferDesc.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;
+	bufferDesc.MiscFlags = 0;
+	bufferDesc.StructureByteStride = 0;
+
+	D3D11_SUBRESOURCE_DATA data;
+	data.pSysMem = &bufferStruct;
+	data.SysMemPitch = 0;
+	data.SysMemSlicePitch = 0;
+
+	if (FAILED(Pipeline::Device()->CreateBuffer(&bufferDesc, &data, &parameterBuffer)))
 	{
-		lightDiffuse[i] = diffuse[i];
-		lightSpecular[i] = specular[i];
+		std::cerr << "Failed to create light parameter Buffer" << std::endl;
 	}
 }
 
@@ -366,7 +251,7 @@ DirectX::XMFLOAT4X4 DirectionalLight::TransformMatrix()
 {
 	DirectX::XMMATRIX scaling = DirectX::XMMatrixScaling(1.0f, 1.0f, 1.0f);
 
-	DirectX::XMMATRIX rotation = DirectX::XMLoadFloat4x4(&rotationMatrix);
+	DirectX::XMMATRIX rotation = DirectX::XMMatrixRotationQuaternion(DirectX::XMLoadFloat4(&rotationQuaternion));
 	rotation = DirectX::XMMatrixRotationRollPitchYaw(90.0f, 0.0f, 0.0f) * rotation;
 
 	DirectX::XMMATRIX translation = DirectX::XMMatrixTranslation(position.x, position.y, position.z);
@@ -388,109 +273,112 @@ void DirectionalLight::DepthRender()
 
 DirectX::XMFLOAT4X4 DirectionalLight::InverseTransformMatrix()
 {
-	DirectX::XMMATRIX invScaling = DirectX::XMMatrixScaling(1.0f, 1.0f, 1.0f);
-
-	DirectX::XMMATRIX rotation = DirectX::XMLoadFloat4x4(&rotationMatrix);
-	rotation = DirectX::XMMatrixRotationRollPitchYaw(-90.0f, 0.0f, 0.0f) * rotation;
-	DirectX::XMMATRIX invRotation = DirectX::XMMatrixTranspose(rotation);
+	DirectX::XMMATRIX invRotation = DirectX::XMMatrixTranspose(DirectX::XMMatrixRotationQuaternion(DirectX::XMLoadFloat4(&rotationQuaternion)));
 
 	DirectX::XMMATRIX invTranslation = DirectX::XMMatrixTranslation(-position.x, -position.y, -position.z);
 
 	DirectX::XMFLOAT4X4 output;
 
-	DirectX::XMStoreFloat4x4(&output, DirectX::XMMatrixTranspose(invScaling * invRotation * invTranslation));
+	DirectX::XMStoreFloat4x4(&output, DirectX::XMMatrixTranspose(invTranslation * invRotation));
 
 	return output;
 }
 
-LightType DirectionalLight::Type()
-{
-	return LightType::DirectionalLight;
-}
-
-float DirectionalLight::LightFOV()
-{
-	return 0.0f;
-}
-
-float DirectionalLight::LightFalloff()
-{
-	return 0.0f;
-}
-
 Camera* DirectionalLight::ShadowMapCamera()
 {
-	if (!CastShadows) return;
+	if (!CastingShadows()) return nullptr;
 
 	CameraOrthographic* outputCamera = new CameraOrthographic(shadowmap->Resolution(), shadowmap->Resolution(), 0, 0, viewWidth, nearPlane, farPlane);
 
 	outputCamera->Translate({ position.x, position.y, position.z }, OBJECT_TRANSFORM_SPACE_GLOBAL, OBJECT_TRANSFORM_REPLACE);
 
-	DirectX::XMMATRIX rotation = DirectX::XMLoadFloat4x4(&rotationMatrix);
-	rotation = DirectX::XMMatrixRotationRollPitchYaw(90.0f, 0.0f, 0.0f) * rotation;
-	DirectX::XMFLOAT4X4 inputRotation;
-	DirectX::XMStoreFloat4x4(&inputRotation, rotation);
-	outputCamera->Rotate(inputRotation, OBJECT_TRANSFORM_SPACE_GLOBAL, OBJECT_TRANSFORM_REPLACE);
+	outputCamera->Rotate(rotationQuaternion, OBJECT_TRANSFORM_SPACE_GLOBAL, OBJECT_TRANSFORM_REPLACE);
 
 	return outputCamera;
 }
 
-void DirectionalLight::CreateShadowMap(UINT resolution, float viewWidth, float nearPlane, float farPlane)
+void DirectionalLight::CreateShadowMap(UINT resolution, float viewWidth, float nearPlane, float farPlane, DepthRenderer* renderer)
 {
-	SetupShadowmap(MappingMode::SingleMap, resolution);
+	DeleteShadowMap();
+	shadowmap = new ShadowMapSingle(resolution, this, renderer);
 	this->viewWidth = viewWidth;
 	this->nearPlane = nearPlane;
 	this->farPlane = farPlane;
 }
 
-std::array<float, 3> DirectionalLight::LightDirection()
-{
-	DirectX::XMMATRIX rotation = DirectX::XMLoadFloat4x4(&rotationMatrix);
-	DirectX::XMVECTOR direction = { 0.0f, -1.0f, 0.0f };
-	direction = DirectX::XMVector3Transform(direction, rotation);
-	DirectX::XMFLOAT3 output;
-	DirectX::XMStoreFloat3(&output, direction);
-	return {output.x, output.y, output.z};
-}
-
-std::array<float, 3> DirectionalLight::LightPosition()
-{
-	return {0.0f, 0.0f, 0.0f};
-}
-
 DirectX::XMFLOAT4X4 DirectionalLight::ProjMatrix()
 {
-	DirectX::XMFLOAT4X4 output;
+	DirectX::XMFLOAT4X4 output = DirectX::XMFLOAT4X4();
 
-	if (CastShadows())
+	if (CastingShadows())
 	{
-		DirectX::XMStoreFloat4x4(&output, DirectX::XMMatrixOrthographicLH(viewWidth, viewWidth, nearPlane, farPlane));
+		DirectX::XMStoreFloat4x4(&output, DirectX::XMMatrixTranspose(DirectX::XMMatrixOrthographicLH(viewWidth, viewWidth, nearPlane, farPlane)));
 	}
 
 	return output;
 }
 
-
-
-SpotLight::SpotLight(const std::array<float, 3>& diffuse, const std::array<float, 3>& specular, float lightFOV, float fallof) : lightFOV(lightFOV), fallof(fallof)
+void DirectionalLight::UpdateParameterBuffer()
 {
-	for (int i = 0; i < 3; i++)
-	{
-		lightDiffuse[i] = diffuse[i];
-		lightSpecular[i] = specular[i];
-	}
+	D3D11_MAPPED_SUBRESOURCE mappedResource;
+
+	DirectX::XMMATRIX rotation = DirectX::XMMatrixRotationQuaternion(DirectX::XMLoadFloat4(&rotationQuaternion));
+	DirectX::XMVECTOR direction = { 0.0f, 0.0f, -1.0f };
+	direction = DirectX::XMVector3Transform(direction, rotation);
+	DirectX::XMFLOAT3 output;
+	DirectX::XMStoreFloat3(&output, direction);
+
+	DirectionalLightBuffer bufferStruct = DirectionalLightBuffer(Diffuse(), Specular(), { output.x, output.y, output.z });
+
+	Pipeline::ResourceManipulation::MapBuffer(parameterBuffer, &mappedResource);
+	memcpy(mappedResource.pData, &bufferStruct, sizeof(bufferStruct));
+	Pipeline::ResourceManipulation::UnmapBuffer(parameterBuffer);
 }
 
-LightType SpotLight::Type()
+void DirectionalLight::BindBuffer()
 {
-	return LightType::SpotLight;
+	Pipeline::Deferred::LightPass::ComputeShader::Settings::LightType(LightShaderMode::LightTypeDirectional);
+	Pipeline::Deferred::LightPass::ComputeShader::Bind::DirectionalLightParameterBuffer(parameterBuffer);
+	Pipeline::ShadowMapping::BorderSampleWhite();
+}
+
+
+
+SpotLight::SpotLight(const std::array<float, 3>& diffuse, const std::array<float, 3>& specular, float lightFOV, float fallof) : lightFOV(lightFOV), fallof(fallof), SingularLight(diffuse, specular), nearPlane(0), farPlane(0)
+{
+	D3D11_BUFFER_DESC bufferDesc;
+
+	DirectX::XMMATRIX rotation = DirectX::XMMatrixRotationQuaternion(DirectX::XMLoadFloat4(&rotationQuaternion));
+	DirectX::XMVECTOR direction = { 0.0f, 0.0f, -1.0f };
+	direction = DirectX::XMVector3Transform(direction, rotation);
+	DirectX::XMFLOAT3 output;
+	DirectX::XMStoreFloat3(&output, direction);
+
+	SpotLightBuffer bufferStruct = SpotLightBuffer(lightFOV, fallof, Diffuse(), Specular(), { position.x, position.y, position.z }, { output.x, output.y, output.z });
+
+	bufferDesc.ByteWidth = sizeof(bufferStruct);
+	bufferDesc.Usage = D3D11_USAGE_DYNAMIC;
+	bufferDesc.BindFlags = D3D11_BIND_CONSTANT_BUFFER;
+	bufferDesc.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;
+	bufferDesc.MiscFlags = 0;
+	bufferDesc.StructureByteStride = 0;
+
+	D3D11_SUBRESOURCE_DATA data;
+	data.pSysMem = &bufferStruct;
+	data.SysMemPitch = 0;
+	data.SysMemSlicePitch = 0;
+
+	if (FAILED(Pipeline::Device()->CreateBuffer(&bufferDesc, &data, &parameterBuffer)))
+	{
+		std::cerr << "Failed to create light parameter Buffer" << std::endl;
+	}
 }
 
 DirectX::XMFLOAT4X4 SpotLight::TransformMatrix()
 {
 	DirectX::XMMATRIX scaling = DirectX::XMMatrixScaling(1.0f, 1.0f, 1.0f);
 
-	DirectX::XMMATRIX rotation = DirectX::XMLoadFloat4x4(&rotationMatrix);
+	DirectX::XMMATRIX rotation = DirectX::XMMatrixRotationQuaternion(DirectX::XMLoadFloat4(&rotationQuaternion));
 	rotation = DirectX::XMMatrixRotationRollPitchYaw(90.0f, 0.0f, 0.0f) * rotation;
 
 	DirectX::XMMATRIX translation = DirectX::XMMatrixTranslation(position.x, position.y, position.z);
@@ -504,59 +392,26 @@ DirectX::XMFLOAT4X4 SpotLight::TransformMatrix()
 
 DirectX::XMFLOAT4X4 SpotLight::InverseTransformMatrix()
 {
-	DirectX::XMMATRIX invScaling = DirectX::XMMatrixScaling(1.0f, 1.0f, 1.0f);
-
-	DirectX::XMMATRIX rotation = DirectX::XMLoadFloat4x4(&rotationMatrix);
-	rotation = DirectX::XMMatrixRotationRollPitchYaw(90.0f, 0.0f, 0.0f) * rotation;
-	DirectX::XMMATRIX invRotation = DirectX::XMMatrixTranspose(rotation);
+	DirectX::XMMATRIX invRotation = DirectX::XMMatrixTranspose(DirectX::XMMatrixRotationQuaternion(DirectX::XMLoadFloat4(&rotationQuaternion)));
 
 	DirectX::XMMATRIX invTranslation = DirectX::XMMatrixTranslation(-position.x, -position.y, -position.z);
 
 	DirectX::XMFLOAT4X4 output;
 
-	DirectX::XMStoreFloat4x4(&output, DirectX::XMMatrixTranspose(invScaling * invRotation * invTranslation));
+	DirectX::XMStoreFloat4x4(&output, DirectX::XMMatrixTranspose(invTranslation * invRotation));
 
 	return output;
 }
 
-float SpotLight::LightFOV()
-{
-	return lightFOV;
-}
-
-float SpotLight::LightFalloff()
-{
-	return fallof;
-}
-
-std::array<float, 3> SpotLight::LightDirection()
-{
-	DirectX::XMMATRIX rotation = DirectX::XMLoadFloat4x4(&rotationMatrix);
-	DirectX::XMVECTOR direction = { 0.0f, -1.0f, 0.0f };
-	direction = DirectX::XMVector3Transform(direction, rotation);
-	DirectX::XMFLOAT3 output;
-	DirectX::XMStoreFloat3(&output, direction);
-	return { output.x, output.y, output.z };
-}
-
-std::array<float, 3> SpotLight::LightPosition()
-{
-	return { position.x, position.y, position.z };
-}
-
 Camera* SpotLight::ShadowMapCamera()
 {
-	if (!CastShadows) return;
+	if (!CastingShadows()) return nullptr;
 
 	CameraPerspective* outputCamera = new CameraPerspective(shadowmap->Resolution(), shadowmap->Resolution(), 0, 0, lightFOV, nearPlane, farPlane);
 
 	outputCamera->Translate({ position.x, position.y, position.z }, OBJECT_TRANSFORM_SPACE_GLOBAL, OBJECT_TRANSFORM_REPLACE);
 	
-	DirectX::XMMATRIX rotation = DirectX::XMLoadFloat4x4(&rotationMatrix);
-	rotation = DirectX::XMMatrixRotationRollPitchYaw(90.0f, 0.0f, 0.0f) * rotation;
-	DirectX::XMFLOAT4X4 inputRotation;
-	DirectX::XMStoreFloat4x4(&inputRotation, rotation);
-	outputCamera->Rotate(inputRotation, OBJECT_TRANSFORM_SPACE_GLOBAL, OBJECT_TRANSFORM_REPLACE);
+	outputCamera->Rotate(rotationQuaternion, OBJECT_TRANSFORM_SPACE_GLOBAL, OBJECT_TRANSFORM_REPLACE);
 
 	return outputCamera;
 }
@@ -571,25 +426,160 @@ void SpotLight::DepthRender()
 
 DirectX::XMFLOAT4X4 SpotLight::ProjMatrix()
 {
-	DirectX::XMFLOAT4X4 output;
+	DirectX::XMFLOAT4X4 output = DirectX::XMFLOAT4X4();
 
-	if (CastShadows())
+	if (CastingShadows())
 	{
-		DirectX::XMStoreFloat4x4(&output, DirectX::XMMatrixPerspectiveFovLH(lightFOV, 1.0f, nearPlane, farPlane));
+		DirectX::XMStoreFloat4x4(&output, DirectX::XMMatrixTranspose(DirectX::XMMatrixPerspectiveFovLH(lightFOV * OBJECT_ROTATION_UNIT_DEGREES, 1.0f, nearPlane, farPlane)));
 	}
 
 	return output;
 }
 
-void SpotLight::CreateShadowMap(UINT resolution, float nearPlane, float farPlane)
+void SpotLight::SetFOV(float lightFOV)
 {
-	SetupShadowmap(MappingMode::SingleMap, resolution);
+	this->lightFOV = lightFOV;
+	flagParameterChange();
+}
+
+void SpotLight::SetFalloff(float falloff)
+{
+	this->fallof = falloff;
+	flagParameterChange();
+}
+
+void SpotLight::CreateShadowMap(UINT resolution, float nearPlane, float farPlane, DepthRenderer* renderer)
+{
+	DeleteShadowMap();
+	shadowmap = new ShadowMapSingle(resolution, this, renderer);
 	this->nearPlane = nearPlane;
 	this->farPlane = farPlane;
 }
 
-ShadowMapSingle::ShadowMapSingle(UINT resolution) : Shadowmap(resolution)
+void SpotLight::UpdateParameterBuffer()
 {
+	D3D11_MAPPED_SUBRESOURCE mappedResource;
+
+	DirectX::XMMATRIX rotation = DirectX::XMMatrixRotationQuaternion(DirectX::XMLoadFloat4(&rotationQuaternion));
+	DirectX::XMVECTOR direction = { 0.0f, 0.0f, -1.0f};
+	direction = DirectX::XMVector3Transform(direction, rotation);
+	DirectX::XMFLOAT3 output;
+	DirectX::XMStoreFloat3(&output, direction);
+
+	SpotLightBuffer bufferStruct = SpotLightBuffer(lightFOV, fallof, Diffuse(), Specular(), { position.x, position.y, position.z }, { output.x, output.y, output.z });
+
+	Pipeline::ResourceManipulation::MapBuffer(parameterBuffer, &mappedResource);
+	memcpy(mappedResource.pData, &bufferStruct, sizeof(bufferStruct));
+	Pipeline::ResourceManipulation::UnmapBuffer(parameterBuffer);
+}
+
+void SpotLight::BindBuffer()
+{
+	Pipeline::Deferred::LightPass::ComputeShader::Settings::LightType(LightShaderMode::LightTypeSpot);
+	Pipeline::Deferred::LightPass::ComputeShader::Bind::SpotLightParameterBuffer(parameterBuffer);
+	Pipeline::ShadowMapping::BorderSampleBlack();
+}
+
+
+Shadowmap::Shadowmap(UINT resolution, SingularLight* linkedLight) : resolution(resolution), linkedLight(linkedLight), mapSRV(nullptr), mapTexture(nullptr), shadowMappingBuffer(nullptr)
+{
+	latestRender = 0;
+	mappingTransformed = true;
+}
+
+Shadowmap::~Shadowmap()
+{
+	mapTexture->Release();
+	mapSRV->Release();
+	shadowMappingBuffer->Release();
+}
+
+void Shadowmap::Bind()
+{
+	if (mappingTransformed)
+	{
+		ShadowMappingBuffer bufferData(linkedLight->InverseTransformMatrix(), linkedLight->ProjMatrix());
+
+		D3D11_MAPPED_SUBRESOURCE mappedResource;
+		ZeroMemory(&mappedResource, sizeof(D3D11_MAPPED_SUBRESOURCE));
+
+		Pipeline::ResourceManipulation::MapBuffer(shadowMappingBuffer, &mappedResource);
+		memcpy(mappedResource.pData, &bufferData, sizeof(ShadowMappingBuffer));
+		Pipeline::ResourceManipulation::UnmapBuffer(shadowMappingBuffer);
+
+		MapRender();
+
+		latestRender = Pipeline::FrameCounter();
+		mappingTransformed = false;
+	}
+	else if (latestRender != Pipeline::FrameCounter())
+	{
+		MapRender();
+		latestRender = Pipeline::FrameCounter();
+	}
+
+	Pipeline::Deferred::LightPass::ComputeShader::Bind::ShadowmappingBuffer(shadowMappingBuffer);
+	BindMap();
+}
+
+void Shadowmap::flagShadowChange()
+{
+	mappingTransformed = true;
+}
+
+int Shadowmap::Resolution()
+{
+	return resolution;
+}
+
+ShadowMapSingle::ShadowMapSingle(UINT resolution, SingularLight* linkedLight, DepthRenderer* renderer) : Shadowmap(resolution, linkedLight), renderer(renderer)
+{
+	D3D11_BUFFER_DESC bufferDesc;
+
+	bufferDesc.ByteWidth = sizeof(DirectX::XMFLOAT4X4) * 2;
+	bufferDesc.Usage = D3D11_USAGE_DYNAMIC;
+	bufferDesc.BindFlags = D3D11_BIND_CONSTANT_BUFFER;
+	bufferDesc.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;
+	bufferDesc.MiscFlags = 0;
+	bufferDesc.StructureByteStride = 0;
+
+	if (FAILED(Pipeline::Device()->CreateBuffer(&bufferDesc, nullptr, &shadowMappingBuffer)))
+	{
+		std::cerr << "Failed to set up own shadowMapping buffer" << std::endl;
+	}
+
+
+	D3D11_TEXTURE2D_DESC textureDesc;
+	textureDesc.MipLevels = 1;
+	textureDesc.ArraySize = 1;
+	textureDesc.Format = DXGI_FORMAT_R24G8_TYPELESS;
+	textureDesc.SampleDesc.Count = 1;
+	textureDesc.SampleDesc.Quality = 0;
+	textureDesc.Usage = D3D11_USAGE_DEFAULT;
+	textureDesc.BindFlags = D3D11_BIND_DEPTH_STENCIL | D3D11_BIND_SHADER_RESOURCE;
+	textureDesc.CPUAccessFlags = 0;
+	textureDesc.MiscFlags = 0;
+	textureDesc.Width = resolution;
+	textureDesc.Height = resolution;
+
+	if (FAILED(Pipeline::Device()->CreateTexture2D(&textureDesc, nullptr, &mapTexture)))
+	{
+		std::cerr << "Failed to set up own shadow map texture resource" << std::endl;
+	}
+
+	D3D11_SHADER_RESOURCE_VIEW_DESC srvDesc;
+	srvDesc.Format = DXGI_FORMAT_R24_UNORM_X8_TYPELESS;
+	srvDesc.ViewDimension = D3D11_SRV_DIMENSION_TEXTURE2D;
+	D3D11_TEX2D_SRV texSRV;
+	texSRV.MipLevels = 1;
+	texSRV.MostDetailedMip = 0;
+	srvDesc.Texture2D = texSRV;
+
+	if (FAILED(Pipeline::Device()->CreateShaderResourceView(mapTexture, &srvDesc, &mapSRV)))
+	{
+		std::cerr << "Failed to set up own shadow map SRV" << std::endl;
+	}
+
 	D3D11_DEPTH_STENCIL_VIEW_DESC dsvDesc;
 	dsvDesc.Format = DXGI_FORMAT_D24_UNORM_S8_UINT;
 	dsvDesc.ViewDimension = D3D11_DSV_DIMENSION_TEXTURE2D;
@@ -609,121 +599,83 @@ ShadowMapSingle::~ShadowMapSingle()
 	mapDSV->Release();
 }
 
-MappingMode ShadowMapSingle::ShadowmapMappingMode()
+void ShadowMapSingle::MapRender()
 {
-	return MappingMode::SingleMap;
+	Camera* view = linkedLight->ShadowMapCamera();
+	renderer->CameraDepthRender(mapDSV, view);
+	delete view;
 }
 
-ID3D11DepthStencilView** ShadowMapSingle::DSVArray()
+void ShadowMapSingle::BindMap()
 {
-	return &mapDSV;
+	Pipeline::Deferred::LightPass::ComputeShader::Settings::ShadowMapType(0);
+	Pipeline::Deferred::LightPass::ComputeShader::Bind::ShadowMap(mapSRV);
 }
 
-void ShadowMapSingle::Texture2DDesc(D3D11_TEXTURE2D_DESC& textureDesc)
+
+
+ShadowMapCube::ShadowMapCube(UINT resolution, SingularLight* linkedLight, OmniDistanceRenderer* renderer) : Shadowmap(resolution, linkedLight), renderer(renderer)
 {
+	D3D11_BUFFER_DESC bufferDesc;
+
+	bufferDesc.ByteWidth = sizeof(DirectX::XMFLOAT4X4) * 2;
+	bufferDesc.Usage = D3D11_USAGE_DYNAMIC;
+	bufferDesc.BindFlags = D3D11_BIND_CONSTANT_BUFFER;
+	bufferDesc.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;
+	bufferDesc.MiscFlags = 0;
+	bufferDesc.StructureByteStride = 0;
+
+	if (FAILED(Pipeline::Device()->CreateBuffer(&bufferDesc, nullptr, &shadowMappingBuffer)))
+	{
+		std::cerr << "Failed to set up own shadowMapping buffer" << std::endl;
+	}
+
+
+	D3D11_TEXTURE2D_DESC textureDesc;
 	textureDesc.MipLevels = 1;
-	textureDesc.ArraySize = 1;
-	textureDesc.Format = DXGI_FORMAT_R24G8_TYPELESS;
+	textureDesc.ArraySize = 6;
+	textureDesc.Format = DXGI_FORMAT_R32_FLOAT;
 	textureDesc.SampleDesc.Count = 1;
 	textureDesc.SampleDesc.Quality = 0;
 	textureDesc.Usage = D3D11_USAGE_DEFAULT;
-	textureDesc.BindFlags = D3D11_BIND_DEPTH_STENCIL | D3D11_BIND_SHADER_RESOURCE;
+	textureDesc.BindFlags = D3D11_BIND_RENDER_TARGET | D3D11_BIND_SHADER_RESOURCE;
 	textureDesc.CPUAccessFlags = 0;
-	textureDesc.MiscFlags = 0;
-}
+	textureDesc.MiscFlags = D3D11_RESOURCE_MISC_TEXTURECUBE;
+	textureDesc.Width = resolution;
+	textureDesc.Height = resolution;
 
-void ShadowMapSingle::SRVDesc(D3D11_SHADER_RESOURCE_VIEW_DESC& srvDesc)
-{
-	srvDesc.Format = DXGI_FORMAT_R24_UNORM_X8_TYPELESS;
-	srvDesc.ViewDimension = D3D11_SRV_DIMENSION_TEXTURE2D;
-	D3D11_TEX2D_SRV texSRV;
-	texSRV.MipLevels = 1;
-	texSRV.MostDetailedMip = 0;
-	srvDesc.Texture2D = texSRV;
-}
-
-ShadowMapDouble::ShadowMapDouble(UINT resolution) : Shadowmap(resolution)
-{
-	D3D11_DEPTH_STENCIL_VIEW_DESC dsvDesc;
-	dsvDesc.Format = DXGI_FORMAT_D24_UNORM_S8_UINT;
-	dsvDesc.ViewDimension = D3D11_DSV_DIMENSION_TEXTURE2DARRAY;
-	dsvDesc.Flags = 0;
-	D3D11_TEX2D_ARRAY_DSV texDSV;
-	texDSV.ArraySize = 1;
-	texDSV.FirstArraySlice = 0;
-	texDSV.MipSlice = 0;
-	dsvDesc.Texture2DArray = texDSV;
-
-	if (FAILED(Pipeline::Device()->CreateDepthStencilView(mapTexture, &dsvDesc, &mapDSV[0])))
+	if (FAILED(Pipeline::Device()->CreateTexture2D(&textureDesc, nullptr, &mapTexture)))
 	{
-		std::cerr << "Error: Failed to set up shadowmap DSVs" << std::endl;
+		std::cerr << "Failed to set up own shadow map texture resource" << std::endl;
 	}
 
-	dsvDesc.Texture2DArray.FirstArraySlice = 1;
-	if (FAILED(Pipeline::Device()->CreateDepthStencilView(mapTexture, &dsvDesc, &mapDSV[1])))
-	{
-		std::cerr << "Error: Failed to set up shadowmap DSVs" << std::endl;
-	}
-}
-
-ShadowMapDouble::~ShadowMapDouble()
-{
-	mapDSV[0]->Release();
-	mapDSV[1]->Release();
-}
-
-MappingMode ShadowMapDouble::ShadowmapMappingMode()
-{
-	return MappingMode::DoubleMap;
-}
-
-ID3D11DepthStencilView** ShadowMapDouble::DSVArray()
-{
-	return mapDSV;
-}
-
-void ShadowMapDouble::Texture2DDesc(D3D11_TEXTURE2D_DESC& textureDesc)
-{
-	textureDesc.MipLevels = 1;
-	textureDesc.ArraySize = 2;
-	textureDesc.Format = DXGI_FORMAT_R24G8_TYPELESS;
-	textureDesc.SampleDesc.Count = 1;
-	textureDesc.SampleDesc.Quality = 0;
-	textureDesc.Usage = D3D11_USAGE_DEFAULT;
-	textureDesc.BindFlags = D3D11_BIND_DEPTH_STENCIL | D3D11_BIND_SHADER_RESOURCE;
-	textureDesc.CPUAccessFlags = 0;
-	textureDesc.MiscFlags = 0;
-}
-
-void ShadowMapDouble::SRVDesc(D3D11_SHADER_RESOURCE_VIEW_DESC& srvDesc)
-{
-	srvDesc.Format = DXGI_FORMAT_R24_UNORM_X8_TYPELESS;
-	srvDesc.ViewDimension = D3D11_SRV_DIMENSION_TEXTURE2DARRAY;
-	D3D11_TEX2D_ARRAY_SRV texSRV;
-	texSRV.ArraySize = 2;
-	texSRV.FirstArraySlice = 0;
+	D3D11_SHADER_RESOURCE_VIEW_DESC srvDesc;
+	srvDesc.Format = DXGI_FORMAT_R32_FLOAT;
+	srvDesc.ViewDimension = D3D11_SRV_DIMENSION_TEXTURECUBE;
+	D3D11_TEXCUBE_SRV texSRV;
 	texSRV.MipLevels = 1;
 	texSRV.MostDetailedMip = 0;
-	srvDesc.Texture2DArray = texSRV;
-}
+	srvDesc.TextureCube = texSRV;
 
-ShadowMapCube::ShadowMapCube(UINT resolution) : Shadowmap(resolution)
-{
-	D3D11_DEPTH_STENCIL_VIEW_DESC dsvDesc;
-	dsvDesc.Format = DXGI_FORMAT_D24_UNORM_S8_UINT;
-	dsvDesc.ViewDimension = D3D11_DSV_DIMENSION_TEXTURE2DARRAY;
-	dsvDesc.Flags = 0;
-	D3D11_TEX2D_ARRAY_DSV texDSV;
-	texDSV.ArraySize = 1;
-	texDSV.MipSlice = 0;
-	dsvDesc.Texture2DArray = texDSV;
+	if (FAILED(Pipeline::Device()->CreateShaderResourceView(mapTexture, &srvDesc, &mapSRV)))
+	{
+		std::cerr << "Failed to set up own shadow map SRV" << std::endl;
+	}
+
+	D3D11_RENDER_TARGET_VIEW_DESC rtvDesc;
+	rtvDesc.Format = DXGI_FORMAT_R32_FLOAT;
+	rtvDesc.ViewDimension = D3D11_RTV_DIMENSION_TEXTURE2DARRAY;
+	D3D11_TEX2D_ARRAY_RTV texRTV;
+	texRTV.ArraySize = 1;
+	texRTV.MipSlice = 0;
+	rtvDesc.Texture2DArray = texRTV;
 	
 	for (int i = 0; i < 6; i++)
 	{
-		dsvDesc.Texture2DArray.FirstArraySlice = i;
-		if (FAILED(Pipeline::Device()->CreateDepthStencilView(mapTexture, &dsvDesc, &mapDSV[i])))
+		rtvDesc.Texture2DArray.FirstArraySlice = i;
+		if (FAILED(Pipeline::Device()->CreateRenderTargetView(mapTexture, &rtvDesc, &mapRTV[i])))
 		{
-			std::cerr << "Error: Failed to set up shadowmap DSVs" << std::endl;
+			std::cerr << "Error: Failed to set up shadowmap RTVs" << std::endl;
 		}
 	}
 }
@@ -732,41 +684,768 @@ ShadowMapCube::~ShadowMapCube()
 {
 	for (int i = 0; i < 6; i++)
 	{
-		mapDSV[i]->Release();
+		mapRTV[i]->Release();
 	}
 }
 
-MappingMode ShadowMapCube::ShadowmapMappingMode()
+void ShadowMapCube::MapRender()
 {
-	return MappingMode::CubeMap;
+	Camera* view = linkedLight->ShadowMapCamera();
+
+	renderer->OmniDistanceRender(mapRTV, view);
+
+	delete view;
 }
 
-ID3D11DepthStencilView** ShadowMapCube::DSVArray()
+void ShadowMapCube::BindMap()
 {
-	return mapDSV;
+	Pipeline::Deferred::LightPass::ComputeShader::Settings::ShadowMapType(1);
+	Pipeline::Deferred::LightPass::ComputeShader::Bind::ShadowCubeMap(mapSRV);
 }
 
-void ShadowMapCube::Texture2DDesc(D3D11_TEXTURE2D_DESC& textureDesc)
+AmbientLight::AmbientLight(const std::array<float, 3>& ambient)
 {
+	parametersModifyed = false;
+	for (int i = 0; i < 3; i++)
+	{
+		this->lightAmbient[i] = ambient[i];
+	}
+
+	D3D11_BUFFER_DESC bufferDesc;
+
+	AmbientLightBuffer bufferStruct = AmbientLightBuffer(lightAmbient);
+
+	bufferDesc.ByteWidth = sizeof(bufferStruct);
+	bufferDesc.Usage = D3D11_USAGE_DYNAMIC;
+	bufferDesc.BindFlags = D3D11_BIND_CONSTANT_BUFFER;
+	bufferDesc.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;
+	bufferDesc.MiscFlags = 0;
+	bufferDesc.StructureByteStride = 0;
+
+	D3D11_SUBRESOURCE_DATA data;
+	data.pSysMem = &bufferStruct;
+	data.SysMemPitch = 0;
+	data.SysMemSlicePitch = 0;
+
+	if (FAILED(Pipeline::Device()->CreateBuffer(&bufferDesc, &data, &parameterBuffer)))
+	{
+		std::cerr << "Failed to create light parameter Buffer" << std::endl;
+	}
+}
+
+AmbientLight::~AmbientLight()
+{
+	parameterBuffer->Release();
+}
+
+void AmbientLight::SetAmbient(std::array<float, 3> lightAmbient)
+{
+	for (int i = 0; i < 3; i++)
+	{
+		this->lightAmbient[i] = lightAmbient[i];
+	}
+	parametersModifyed = true;
+}
+
+std::array<float, 3> AmbientLight::Ambient()
+{
+	return lightAmbient;
+}
+
+DirectX::XMFLOAT4X4 AmbientLight::TransformMatrix()
+{
+	return DirectX::XMFLOAT4X4();
+}
+
+DirectX::XMFLOAT4X4 AmbientLight::InverseTransformMatrix()
+{
+	return DirectX::XMFLOAT4X4();
+}
+
+void AmbientLight::Render()
+{
+}
+
+void AmbientLight::DepthRender()
+{
+}
+
+void AmbientLight::Bind()
+{
+	if (parametersModifyed)
+	{
+		UpdateParameterBuffer();
+
+		parametersModifyed = false;
+	}
+
+	BindBuffer();
+}
+
+void AmbientLight::UpdateParameterBuffer()
+{
+	D3D11_MAPPED_SUBRESOURCE mappedResource;
+
+	AmbientLightBuffer bufferStruct = AmbientLightBuffer(lightAmbient);
+
+	Pipeline::ResourceManipulation::MapBuffer(parameterBuffer, &mappedResource);
+	memcpy(mappedResource.pData, &bufferStruct, sizeof(bufferStruct));
+	Pipeline::ResourceManipulation::UnmapBuffer(parameterBuffer);
+}
+
+void AmbientLight::BindBuffer()
+{
+	Pipeline::Deferred::LightPass::ComputeShader::Settings::LightType(LightShaderMode::LightTypeAmbientBasic);
+	Pipeline::Deferred::LightPass::ComputeShader::Bind::AmbientLightParameterBuffer(parameterBuffer);
+}
+
+SpotDirLightArray::SpotDirLightArray(UINT lightCapacity, UINT shadowmapResolution, DepthRenderer& renderer, std::vector<LightBaseStaging*>* StagingLights) :
+	lightCapacity(lightCapacity),
+	mapResolution(shadowmapResolution),
+	shadowmapRenderer(&renderer),
+	StagingLights(StagingLights)
+{
+	D3D11_BUFFER_DESC bufferDesc;
+
+	bufferDesc.ByteWidth = sizeof(SpotDirStruct) * lightCapacity;
+	bufferDesc.Usage = D3D11_USAGE_DEFAULT;
+	bufferDesc.BindFlags = D3D11_BIND_SHADER_RESOURCE;
+	bufferDesc.CPUAccessFlags = 0;
+	bufferDesc.MiscFlags = D3D11_RESOURCE_MISC_BUFFER_STRUCTURED;
+	bufferDesc.StructureByteStride = sizeof(SpotDirStruct);
+
+	if (FAILED(Pipeline::Device()->CreateBuffer(&bufferDesc, nullptr, &parametersStructuredBuffer)))
+	{
+		std::cerr << "Failed to set up parameters structured buffer!" << std::endl;
+	}
+
+	bufferDesc.ByteWidth = sizeof(ShadowMappingBuffer) * lightCapacity;
+	bufferDesc.StructureByteStride = sizeof(ShadowMappingBuffer);
+
+	if (FAILED(Pipeline::Device()->CreateBuffer(&bufferDesc, nullptr, &shadowProjectionsStructuredBuffer)))
+	{
+		std::cerr << "Failed to set up parameters structured buffer!" << std::endl;
+	}
+
+	D3D11_SHADER_RESOURCE_VIEW_DESC srvDesc;
+	srvDesc.Format = DXGI_FORMAT_UNKNOWN;
+	srvDesc.ViewDimension = D3D11_SRV_DIMENSION_BUFFER;
+
+	D3D11_BUFFER_SRV bufSRV = {};
+	bufSRV.NumElements = lightCapacity;
+	srvDesc.Buffer = bufSRV;
+
+	if (FAILED(Pipeline::Device()->CreateShaderResourceView(parametersStructuredBuffer, &srvDesc, &parametersSRV)))
+	{
+		std::cerr << "Failed to set up parameter buffer SRV" << std::endl;
+	}
+
+	if (FAILED(Pipeline::Device()->CreateShaderResourceView(shadowProjectionsStructuredBuffer, &srvDesc, &shadowProjectionsSRV)))
+	{
+		std::cerr << "Failed to set up shadowmapping buffer SRV" << std::endl;
+	}
+
+	D3D11_TEXTURE2D_DESC textureDesc;
 	textureDesc.MipLevels = 1;
-	textureDesc.ArraySize = 6;
+	textureDesc.ArraySize = lightCapacity;
 	textureDesc.Format = DXGI_FORMAT_R24G8_TYPELESS;
 	textureDesc.SampleDesc.Count = 1;
 	textureDesc.SampleDesc.Quality = 0;
 	textureDesc.Usage = D3D11_USAGE_DEFAULT;
-	textureDesc.BindFlags = D3D11_BIND_DEPTH_STENCIL | D3D11_BIND_SHADER_RESOURCE;
+	textureDesc.BindFlags = D3D11_BIND_SHADER_RESOURCE;
 	textureDesc.CPUAccessFlags = 0;
-	textureDesc.MiscFlags = D3D11_RESOURCE_MISC_TEXTURECUBE;
-}
+	textureDesc.MiscFlags = 0;
+	textureDesc.Width = mapResolution;
+	textureDesc.Height = mapResolution;
+	
+	if (FAILED(Pipeline::Device()->CreateTexture2D(&textureDesc, nullptr, &shadowmapArray)))
+	{
+		std::cerr << "Failed to set up shadowmap texture array resource" << std::endl;
+	}
 
-void ShadowMapCube::SRVDesc(D3D11_SHADER_RESOURCE_VIEW_DESC& srvDesc)
-{
+	srvDesc;
 	srvDesc.Format = DXGI_FORMAT_R24_UNORM_X8_TYPELESS;
 	srvDesc.ViewDimension = D3D11_SRV_DIMENSION_TEXTURE2DARRAY;
 	D3D11_TEX2D_ARRAY_SRV texSRV;
-	texSRV.ArraySize = 6;
-	texSRV.FirstArraySlice = 0;
 	texSRV.MipLevels = 1;
 	texSRV.MostDetailedMip = 0;
+	texSRV.ArraySize = lightCapacity;
+	texSRV.FirstArraySlice = 0;
 	srvDesc.Texture2DArray = texSRV;
+
+	if (FAILED(Pipeline::Device()->CreateShaderResourceView(shadowmapArray, &srvDesc, &shadowmapsSRV)))
+	{
+		std::cerr << "Failed to set up own shadow map SRV" << std::endl;
+	}
+}
+
+SpotDirLightArray::~SpotDirLightArray()
+{
+	parametersStructuredBuffer->Release();
+	parametersSRV->Release();
+
+	shadowProjectionsStructuredBuffer->Release();
+	shadowProjectionsSRV->Release();
+
+	shadowmapArray->Release();
+	shadowmapsSRV->Release();
+}
+
+void SpotDirLightArray::Render()
+{
+}
+
+void SpotDirLightArray::DepthRender()
+{
+}
+
+void SpotDirLightArray::Bind()
+{
+	int count = StagingLights->size() > lightCapacity ? lightCapacity : StagingLights->size();
+	int i = 0;
+	for (LightBaseStaging* light : *StagingLights)
+	{
+		if (i >= count) break;
+		
+		if (light->CastShadow())
+		{
+			if (light->ShadowmapResolution() == mapResolution)
+			{
+				light->StageLightParameters(i, parametersStructuredBuffer);
+
+				if (!light->ShadowIsUpdated())
+				{
+					Camera* view = light->ShadowMapCamera();
+					shadowmapRenderer->CameraDepthRender(light->StagingShadowmapDSV(), view);
+					delete view;
+					light->MarkShadowUpdate();
+				}
+				light->StageLightShadowmap(i, shadowProjectionsStructuredBuffer, shadowmapArray);
+				i++;
+			}
+		}
+		else
+		{
+			light->StageLightParameters(i, parametersStructuredBuffer);
+			i++;
+		}
+	}
+
+	Pipeline::Deferred::LightPass::ComputeShader::Bind::LightArrayParameters(parametersSRV);
+	Pipeline::Deferred::LightPass::ComputeShader::Bind::LightArrayShadowMapping(shadowProjectionsSRV);
+	Pipeline::Deferred::LightPass::ComputeShader::Bind::LightArrayShadowmaps(shadowmapsSRV);
+	Pipeline::Deferred::LightPass::ComputeShader::Settings::LightCount(count);
+	Pipeline::Deferred::LightPass::ComputeShader::Settings::LightType(LightShaderMode::SpotDirArray);
+	Pipeline::ShadowMapping::BorderSampleWhite();
+}
+
+UINT SpotDirLightArray::ShadowmapsResolution()
+{
+	return mapResolution;
+}
+
+DirectX::XMFLOAT4X4 SpotDirLightArray::TransformMatrix()
+{
+	return DirectX::XMFLOAT4X4();
+}
+
+DirectX::XMFLOAT4X4 SpotDirLightArray::InverseTransformMatrix()
+{
+	return DirectX::XMFLOAT4X4();
+}
+
+LightBaseStaging::LightBaseStaging()
+{
+	if (!CreateTransformBuffer())
+	{
+		std::cerr << "Failed to create light transform Buffer" << std::endl;
+	}
+}
+
+LightBaseStaging::~LightBaseStaging()
+{
+	parameterStagingBuffer->Release();
+
+	RemoveShadowMapping();
+	
+	worldTransformBuffer->Release();
+}
+
+void LightBaseStaging::RemoveShadowMapping()
+{
+	if (shadowProjectionStagingBuffer != nullptr)
+	{
+		shadowProjectionStagingBuffer->Release();
+		shadowProjectionStagingBuffer = nullptr;
+	}
+	if (shadowmapTexture != nullptr)
+	{
+		shadowmapTexture->Release();
+		shadowmapTexture = nullptr;
+	}
+	if (shadowmapDSV != nullptr)
+	{
+		shadowmapDSV->Release();
+		shadowmapDSV = nullptr;
+	}
+	SetCastShadow(false);
+}
+
+void LightBaseStaging::SetCastShadow(bool castShadow)
+{
+	bool newValue;
+	if (shadowProjectionStagingBuffer != nullptr)
+	{
+		newValue = castShadow;
+	}
+	else
+	{
+		newValue = false;
+	}
+
+	if (newValue != this->castShadow)
+	{
+		FlagModification();
+	}
+
+	this->castShadow = newValue;
+}
+
+bool LightBaseStaging::CastShadow()
+{
+	return castShadow;
+}
+
+UINT LightBaseStaging::ShadowmapResolution()
+{
+	return mapResolution;
+}
+
+void LightBaseStaging::StageLightParameters(UINT index, ID3D11Buffer* parametersStructuredBuffer)
+{
+	if (modyfied)
+	{
+		StagingBuffersUpdate();
+		modyfied = false;
+	}
+	Pipeline::ResourceManipulation::StageResource(parametersStructuredBuffer, index, sizeof(SpotDirStruct), parameterStagingBuffer);
+}
+
+void LightBaseStaging::StageLightShadowmap(UINT index, ID3D11Buffer* shadowProjectionsStructuredBuffer, ID3D11Texture2D* shadowmapArray)
+{
+	if (modyfied)
+	{
+		StagingBuffersUpdate();
+		modyfied = false;
+	}
+	Pipeline::ResourceManipulation::StageResource(shadowProjectionsStructuredBuffer, index, sizeof(ShadowMappingBuffer), shadowProjectionStagingBuffer);
+	Pipeline::ResourceManipulation::StageResource(shadowmapArray, index, shadowmapTexture);
+}
+
+ID3D11DepthStencilView* LightBaseStaging::StagingShadowmapDSV()
+{
+	return shadowmapDSV;
+}
+
+void LightBaseStaging::MarkShadowUpdate()
+{
+	latestUpdate = Pipeline::FrameCounter();
+}
+
+bool LightBaseStaging::ShadowIsUpdated()
+{
+	return latestUpdate == Pipeline::FrameCounter();
+}
+
+void LightBaseStaging::Render()
+{
+}
+
+void LightBaseStaging::DepthRender()
+{
+}
+
+DirectX::XMFLOAT4X4 LightBaseStaging::TransformMatrix()
+{
+	DirectX::XMMATRIX scaling = DirectX::XMMatrixScaling(1.0f, 1.0f, 1.0f);
+
+	DirectX::XMMATRIX rotation = DirectX::XMMatrixRotationQuaternion(DirectX::XMLoadFloat4(&rotationQuaternion));
+	rotation = DirectX::XMMatrixRotationRollPitchYaw(90.0f, 0.0f, 0.0f) * rotation;
+
+	DirectX::XMMATRIX translation = DirectX::XMMatrixTranslation(position.x, position.y, position.z);
+
+	DirectX::XMFLOAT4X4 output;
+
+	DirectX::XMStoreFloat4x4(&output, DirectX::XMMatrixTranspose(scaling * rotation * translation));
+
+	return output;
+}
+
+DirectX::XMFLOAT4X4 LightBaseStaging::InverseTransformMatrix()
+{
+	DirectX::XMMATRIX invRotation = DirectX::XMMatrixTranspose(DirectX::XMMatrixRotationQuaternion(DirectX::XMLoadFloat4(&rotationQuaternion)));
+
+	DirectX::XMMATRIX invTranslation = DirectX::XMMatrixTranslation(-position.x, -position.y, -position.z);
+
+	DirectX::XMFLOAT4X4 output;
+
+	DirectX::XMStoreFloat4x4(&output, DirectX::XMMatrixTranspose(invTranslation * invRotation));
+
+	return output;
+}
+
+void LightBaseStaging::FlagModification()
+{
+	modyfied = true;
+}
+
+void LightBaseStaging::OnModyfied()
+{
+	modyfied = true;
+}
+
+SpotLightStaging::SpotLightStaging(const std::array<float, 3>& diffuse, const std::array<float, 3>& specular, float lightFOV, float fallof) :
+	LightBaseStaging(), lightFOV(lightFOV), fallof(fallof), lightDiffuse(diffuse), lightSpecular(specular)
+{
+	D3D11_BUFFER_DESC bufferDesc;
+
+	DirectX::XMMATRIX rotation = DirectX::XMMatrixRotationQuaternion(DirectX::XMLoadFloat4(&rotationQuaternion));
+	DirectX::XMVECTOR direction = { 0.0f, 0.0f, -1.0f };
+	direction = DirectX::XMVector3Transform(direction, rotation);
+	DirectX::XMFLOAT3 output;
+	DirectX::XMStoreFloat3(&output, direction);
+
+	SpotDirStruct bufferStruct = SpotDirStruct(lightFOV, fallof, diffuse, specular, { position.x, position.y, position.z }, { output.x, output.y, output.z }, 0);
+
+	bufferDesc.ByteWidth = sizeof(bufferStruct);
+	bufferDesc.Usage = D3D11_USAGE_STAGING;
+	bufferDesc.BindFlags = 0;
+	bufferDesc.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;
+	bufferDesc.MiscFlags = 0;
+	bufferDesc.StructureByteStride = 0;
+
+	D3D11_SUBRESOURCE_DATA data;
+	data.pSysMem = &bufferStruct;
+	data.SysMemPitch = 0;
+	data.SysMemSlicePitch = 0;
+
+	if (FAILED(Pipeline::Device()->CreateBuffer(&bufferDesc, &data, &parameterStagingBuffer)))
+	{
+		std::cerr << "Failed to create light parameter Buffer" << std::endl;
+	}
+}
+
+void SpotLightStaging::SetupShadowmapping(SpotDirLightArray& lightArray, float nearPlane, float farPlane)
+{
+	RemoveShadowMapping();
+
+	mapResolution = lightArray.ShadowmapsResolution();
+	this->farPlane = farPlane;
+	this->nearPlane = nearPlane;
+
+	D3D11_BUFFER_DESC bufferDesc;
+
+	DirectX::XMFLOAT4X4 projection = DirectX::XMFLOAT4X4();
+
+	DirectX::XMStoreFloat4x4(&projection, DirectX::XMMatrixTranspose(DirectX::XMMatrixPerspectiveFovLH(lightFOV * OBJECT_ROTATION_UNIT_DEGREES, 1.0f, nearPlane, farPlane)));
+
+	ShadowMappingBuffer bufferStruct = ShadowMappingBuffer(InverseTransformMatrix(), projection);
+
+	bufferDesc.ByteWidth = sizeof(bufferStruct);
+	bufferDesc.Usage = D3D11_USAGE_STAGING;
+	bufferDesc.BindFlags = 0;
+	bufferDesc.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;
+	bufferDesc.MiscFlags = 0;
+	bufferDesc.StructureByteStride = 0;
+
+	D3D11_SUBRESOURCE_DATA data;
+	data.pSysMem = &bufferStruct;
+	data.SysMemPitch = 0;
+	data.SysMemSlicePitch = 0;
+
+	if (FAILED(Pipeline::Device()->CreateBuffer(&bufferDesc, &data, &shadowProjectionStagingBuffer)))
+	{
+		std::cerr << "Failed to create light shadowmapping Buffer" << std::endl;
+	}
+
+	D3D11_TEXTURE2D_DESC textureDesc;
+	textureDesc.MipLevels = 1;
+	textureDesc.ArraySize = 1;
+	textureDesc.Format = DXGI_FORMAT_R24G8_TYPELESS;
+	textureDesc.SampleDesc.Count = 1;
+	textureDesc.SampleDesc.Quality = 0;
+	textureDesc.Usage = D3D11_USAGE_DEFAULT;
+	textureDesc.BindFlags = D3D11_BIND_DEPTH_STENCIL;
+	textureDesc.CPUAccessFlags = 0;
+	textureDesc.MiscFlags = 0;
+	textureDesc.Width = mapResolution;
+	textureDesc.Height = mapResolution;
+
+	if (FAILED(Pipeline::Device()->CreateTexture2D(&textureDesc, nullptr, &shadowmapTexture)))
+	{
+		std::cerr << "Failed to set up shadow map texture resource" << std::endl;
+	}
+
+	D3D11_DEPTH_STENCIL_VIEW_DESC dsvDesc;
+	dsvDesc.Format = DXGI_FORMAT_D24_UNORM_S8_UINT;
+	dsvDesc.ViewDimension = D3D11_DSV_DIMENSION_TEXTURE2D;
+	dsvDesc.Flags = 0;
+	D3D11_TEX2D_DSV texDSV;
+	texDSV.MipSlice = 0;
+	dsvDesc.Texture2D = texDSV;
+
+	if (FAILED(Pipeline::Device()->CreateDepthStencilView(shadowmapTexture, &dsvDesc, &shadowmapDSV)))
+	{
+		std::cerr << "Error: Failed to set up shadowmap DSV" << std::endl;
+	}
+}
+
+Camera* SpotLightStaging::ShadowMapCamera()
+{
+	if (!CastShadow()) return nullptr;
+
+	CameraPerspective* outputCamera = new CameraPerspective(mapResolution, mapResolution, 0, 0, lightFOV, nearPlane, farPlane);
+
+	outputCamera->Translate({ position.x, position.y, position.z }, OBJECT_TRANSFORM_SPACE_GLOBAL, OBJECT_TRANSFORM_REPLACE);
+
+	outputCamera->Rotate(rotationQuaternion, OBJECT_TRANSFORM_SPACE_GLOBAL, OBJECT_TRANSFORM_REPLACE);
+
+	return outputCamera;
+}
+
+void SpotLightStaging::SetDiffuse(std::array<float, 3> lightDiffuse)
+{
+	this->lightDiffuse = lightDiffuse;
+	FlagModification();
+}
+
+std::array<float, 3> SpotLightStaging::Diffuse()
+{
+	return lightDiffuse;
+}
+
+void SpotLightStaging::SetSpecular(std::array<float, 3> lightSpecular)
+{
+	this->lightSpecular = lightSpecular;
+	FlagModification();
+}
+
+std::array<float, 3> SpotLightStaging::Specular()
+{
+	return lightSpecular;
+}
+
+void SpotLightStaging::StagingBuffersUpdate()
+{
+	D3D11_MAPPED_SUBRESOURCE mappedResource;
+
+	DirectX::XMMATRIX rotation = DirectX::XMMatrixRotationQuaternion(DirectX::XMLoadFloat4(&rotationQuaternion));
+	DirectX::XMVECTOR direction = { 0.0f, 0.0f, -1.0f };
+	direction = DirectX::XMVector3Transform(direction, rotation);
+	DirectX::XMFLOAT3 output;
+	DirectX::XMStoreFloat3(&output, direction);
+
+	SpotDirStruct bufferStruct = SpotDirStruct(lightFOV, fallof, lightDiffuse, lightSpecular, { position.x, position.y, position.z }, { output.x, output.y, output.z }, CastShadow() ? 1 : 0);
+
+	Pipeline::ResourceManipulation::MapStagingBuffer(parameterStagingBuffer, &mappedResource);
+	memcpy(mappedResource.pData, &bufferStruct, sizeof(bufferStruct));
+	Pipeline::ResourceManipulation::UnmapBuffer(parameterStagingBuffer);
+
+	if (CastShadow())
+	{
+		DirectX::XMFLOAT4X4 projection = DirectX::XMFLOAT4X4();
+
+		DirectX::XMStoreFloat4x4(&projection, DirectX::XMMatrixTranspose(DirectX::XMMatrixPerspectiveFovLH(lightFOV * OBJECT_ROTATION_UNIT_DEGREES, 1.0f, nearPlane, farPlane)));
+
+		ShadowMappingBuffer shadowBufferStruct = ShadowMappingBuffer(InverseTransformMatrix(), projection);
+
+		Pipeline::ResourceManipulation::MapStagingBuffer(shadowProjectionStagingBuffer, &mappedResource);
+		memcpy(mappedResource.pData, &shadowBufferStruct, sizeof(shadowBufferStruct));
+		Pipeline::ResourceManipulation::UnmapBuffer(shadowProjectionStagingBuffer);
+	}
+}
+
+DirectionalLightStaging::DirectionalLightStaging(const std::array<float, 3>& diffuse, const std::array<float, 3>& specular) :
+	LightBaseStaging(), lightDiffuse(diffuse), lightSpecular(specular)
+{
+	D3D11_BUFFER_DESC bufferDesc;
+
+	DirectX::XMMATRIX rotation = DirectX::XMMatrixRotationQuaternion(DirectX::XMLoadFloat4(&rotationQuaternion));
+	DirectX::XMVECTOR direction = { 0.0f, 0.0f, -1.0f };
+	direction = DirectX::XMVector3Transform(direction, rotation);
+	DirectX::XMFLOAT3 output;
+	DirectX::XMStoreFloat3(&output, direction);
+
+	SpotDirStruct bufferStruct = SpotDirStruct(diffuse, specular, { output.x, output.y, output.z }, 0);
+
+	bufferDesc.ByteWidth = sizeof(bufferStruct);
+	bufferDesc.Usage = D3D11_USAGE_STAGING;
+	bufferDesc.BindFlags = 0;
+	bufferDesc.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;
+	bufferDesc.MiscFlags = 0;
+	bufferDesc.StructureByteStride = 0;
+
+	D3D11_SUBRESOURCE_DATA data;
+	data.pSysMem = &bufferStruct;
+	data.SysMemPitch = 0;
+	data.SysMemSlicePitch = 0;
+
+	if (FAILED(Pipeline::Device()->CreateBuffer(&bufferDesc, &data, &parameterStagingBuffer)))
+	{
+		std::cerr << "Failed to create light parameter Buffer" << std::endl;
+	}
+}
+
+void DirectionalLightStaging::SetupShadowmapping(SpotDirLightArray& lightArray, float viewWidth, float nearPlane, float farPlane)
+{
+	RemoveShadowMapping();
+
+	mapResolution = lightArray.ShadowmapsResolution();
+
+	this->viewWidth = viewWidth;
+	this->farPlane = farPlane;
+	this->nearPlane = nearPlane;
+
+	D3D11_BUFFER_DESC bufferDesc;
+
+	DirectX::XMFLOAT4X4 projection = DirectX::XMFLOAT4X4();
+
+	DirectX::XMStoreFloat4x4(&projection, DirectX::XMMatrixTranspose(DirectX::XMMatrixOrthographicLH(viewWidth, viewWidth, nearPlane, farPlane)));
+
+	ShadowMappingBuffer bufferStruct = ShadowMappingBuffer(InverseTransformMatrix(), projection);
+
+	bufferDesc.ByteWidth = sizeof(bufferStruct);
+	bufferDesc.Usage = D3D11_USAGE_STAGING;
+	bufferDesc.BindFlags = 0;
+	bufferDesc.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;
+	bufferDesc.MiscFlags = 0;
+	bufferDesc.StructureByteStride = 0;
+
+	D3D11_SUBRESOURCE_DATA data;
+	data.pSysMem = &bufferStruct;
+	data.SysMemPitch = 0;
+	data.SysMemSlicePitch = 0;
+
+	if (FAILED(Pipeline::Device()->CreateBuffer(&bufferDesc, &data, &shadowProjectionStagingBuffer)))
+	{
+		std::cerr << "Failed to create light shadowmapping Buffer" << std::endl;
+	}
+
+	D3D11_TEXTURE2D_DESC textureDesc;
+	textureDesc.MipLevels = 1;
+	textureDesc.ArraySize = 1;
+	textureDesc.Format = DXGI_FORMAT_R24G8_TYPELESS;
+	textureDesc.SampleDesc.Count = 1;
+	textureDesc.SampleDesc.Quality = 0;
+	textureDesc.Usage = D3D11_USAGE_DEFAULT;
+	textureDesc.BindFlags = D3D11_BIND_DEPTH_STENCIL;
+	textureDesc.CPUAccessFlags = 0;
+	textureDesc.MiscFlags = 0;
+	textureDesc.Width = mapResolution;
+	textureDesc.Height = mapResolution;
+
+	if (FAILED(Pipeline::Device()->CreateTexture2D(&textureDesc, nullptr, &shadowmapTexture)))
+	{
+		std::cerr << "Failed to set up shadow map texture resource" << std::endl;
+	}
+
+	D3D11_DEPTH_STENCIL_VIEW_DESC dsvDesc;
+	dsvDesc.Format = DXGI_FORMAT_D24_UNORM_S8_UINT;
+	dsvDesc.ViewDimension = D3D11_DSV_DIMENSION_TEXTURE2D;
+	dsvDesc.Flags = 0;
+	D3D11_TEX2D_DSV texDSV;
+	texDSV.MipSlice = 0;
+	dsvDesc.Texture2D = texDSV;
+
+	if (FAILED(Pipeline::Device()->CreateDepthStencilView(shadowmapTexture, &dsvDesc, &shadowmapDSV)))
+	{
+		std::cerr << "Error: Failed to set up shadowmap DSV" << std::endl;
+	}
+}
+
+Camera* DirectionalLightStaging::ShadowMapCamera()
+{
+	if (!CastShadow()) return nullptr;
+
+	CameraOrthographic* outputCamera = new CameraOrthographic(mapResolution, mapResolution, 0, 0, viewWidth, nearPlane, farPlane);
+
+	outputCamera->Translate({ position.x, position.y, position.z }, OBJECT_TRANSFORM_SPACE_GLOBAL, OBJECT_TRANSFORM_REPLACE);
+
+	outputCamera->Rotate(rotationQuaternion, OBJECT_TRANSFORM_SPACE_GLOBAL, OBJECT_TRANSFORM_REPLACE);
+
+	return outputCamera;
+}
+
+void DirectionalLightStaging::SetDiffuse(std::array<float, 3> lightDiffuse)
+{
+	this->lightDiffuse = lightDiffuse;
+	FlagModification();
+}
+
+std::array<float, 3> DirectionalLightStaging::Diffuse()
+{
+	return lightDiffuse;
+}
+
+void DirectionalLightStaging::SetSpecular(std::array<float, 3> lightSpecular)
+{
+	this->lightSpecular = lightSpecular;
+	FlagModification();
+}
+
+std::array<float, 3> DirectionalLightStaging::Specular()
+{
+	return lightSpecular;
+}
+
+void DirectionalLightStaging::StagingBuffersUpdate()
+{
+	D3D11_MAPPED_SUBRESOURCE mappedResource;
+
+	DirectX::XMMATRIX rotation = DirectX::XMMatrixRotationQuaternion(DirectX::XMLoadFloat4(&rotationQuaternion));
+	DirectX::XMVECTOR direction = { 0.0f, 0.0f, -1.0f };
+	direction = DirectX::XMVector3Transform(direction, rotation);
+	DirectX::XMFLOAT3 output;
+	DirectX::XMStoreFloat3(&output, direction);
+
+	SpotDirStruct bufferStruct = SpotDirStruct(lightDiffuse, lightSpecular, { output.x, output.y, output.z }, CastShadow() ? 1 : 0);
+
+	Pipeline::ResourceManipulation::MapStagingBuffer(parameterStagingBuffer, &mappedResource);
+	memcpy(mappedResource.pData, &bufferStruct, sizeof(bufferStruct));
+	Pipeline::ResourceManipulation::UnmapBuffer(parameterStagingBuffer);
+
+	if (CastShadow())
+	{
+		DirectX::XMFLOAT4X4 projection = DirectX::XMFLOAT4X4();
+
+		DirectX::XMStoreFloat4x4(&projection, DirectX::XMMatrixTranspose(DirectX::XMMatrixOrthographicLH(viewWidth, viewWidth, nearPlane, farPlane)));
+
+		ShadowMappingBuffer shadowBufferStruct = ShadowMappingBuffer(InverseTransformMatrix(), projection);
+
+		Pipeline::ResourceManipulation::MapStagingBuffer(shadowProjectionStagingBuffer, &mappedResource);
+		memcpy(mappedResource.pData, &shadowBufferStruct, sizeof(shadowBufferStruct));
+		Pipeline::ResourceManipulation::UnmapBuffer(shadowProjectionStagingBuffer);
+	}
+}
+
+void SpotLightStaging::SetFOV(float lightFOV)
+{
+	this->lightFOV = lightFOV;
+	FlagModification();
+}
+
+float SpotLightStaging::FOV()
+{
+	return lightFOV;
+}
+
+void SpotLightStaging::SetFalloff(float falloff)
+{
+	this->fallof = falloff;
+	FlagModification();
+}
+
+float SpotLightStaging::Falloff()
+{
+	return fallof;
 }
